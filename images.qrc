@@ -1,0 +1,5 @@
+<RCC>
+  <qresource prefix="/">
+    <file>app_icon.ico</file> <!-- 确保文件名与你的图标文件完全一致 -->
+  </qresource>
+</RCC>
