@@ -3,4 +3,6 @@ __pycache__/
 .venv/         # 虚拟环境文件夹
 .idea/         # IDE项目配置文件
 .vscode/
+dist/
+build/
 *.log
