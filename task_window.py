@@ -2024,7 +2024,7 @@ class TransparentTaskWindow(QWidget):
                 continue
             try:
                 time_diff = (task.get_deadline_datetime() - now).total_seconds()
-                if time_diff <= 3600 and task.id not in self.notified_task_ids:
+                if 0 < time_diff <= 3600 and task.id not in self.notified_task_ids:
                     self.notified_task_ids.add(task.id)
                     minutes_left = int(time_diff / 60)
                     self.show_deadline_notification(task.content, minutes_left)
