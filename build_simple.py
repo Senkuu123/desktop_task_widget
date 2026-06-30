@@ -12,9 +12,12 @@ def check_required_files():
         'main.py',
         'task_window.py',
         'task.py',
+        'habit.py',
         'storage.py',
         'add_task_dialog.py',
         'edit_task_dialog.py',
+        'add_habit_dialog.py',
+        'water_reminder.py',
         'autostart_manager.py',
         'images_rc.py',  # 新增资源文件
         'app_icon.ico',
@@ -219,6 +222,8 @@ def run_pyinstaller():
         '--hidden-import=json',
         '--hidden-import=re',
         '--hidden-import=images_rc',
+        '--hidden-import=winotify',
+        '--hidden-import=winotify.notification',
         # 添加数据文件
         '--add-data=app_icon.ico;.',
         '--add-data=version_info.txt;.',

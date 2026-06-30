@@ -8,6 +8,8 @@ import os
 import sys
 from typing import List, Optional
 from task import Task
+from habit import Habit
+from water_reminder import WaterReminder
 
 
 def get_data_dir():
@@ -35,6 +37,8 @@ def get_settings_file_path():
 # 任务数据文件路径（使用函数获取，确保路径正确）
 TASKS_FILE = get_tasks_file_path()
 SETTINGS_FILE = get_settings_file_path()
+HABITS_FILE = os.path.join(get_data_dir(), "habits.json")
+WATER_FILE = os.path.join(get_data_dir(), "water.json")
 
 
 def save_tasks_to_json(tasks_list: List[Task]) -> bool:
@@ -216,10 +220,10 @@ def archive_task(task: Task) -> bool:
 def get_tasks_statistics(tasks_list: List[Task]) -> dict:
     """
     获取任务统计信息
-    
+
     Args:
         tasks_list (List[Task]): 任务列表
-        
+
     Returns:
         dict: 统计信息字典
     """
@@ -227,12 +231,12 @@ def get_tasks_statistics(tasks_list: List[Task]) -> dict:
     undone_tasks = len([task for task in tasks_list if not task.is_done])
     done_tasks = len([task for task in tasks_list if task.is_done])
     overdue_tasks = len([task for task in tasks_list if task.is_overdue()])
-    
+
     # 按优先级统计
     high_priority = len([task for task in tasks_list if task.priority == 1 and not task.is_done])
     medium_priority = len([task for task in tasks_list if task.priority == 2 and not task.is_done])
     low_priority = len([task for task in tasks_list if task.priority == 3 and not task.is_done])
-    
+
     return {
         'total_tasks': total_tasks,
         'undone_tasks': undone_tasks,
@@ -243,6 +247,51 @@ def get_tasks_statistics(tasks_list: List[Task]) -> dict:
         'low_priority': low_priority,
         'completion_rate': round((done_tasks / total_tasks * 100), 1) if total_tasks > 0 else 0
     }
+
+
+def save_habits_to_json(habits_list: List[Habit]) -> bool:
+    try:
+        data = [h.to_dict() for h in habits_list]
+        with open(HABITS_FILE, 'w', encoding='utf-8') as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+        return True
+    except Exception as e:
+        print(f"保存习惯失败: {e}")
+        return False
+
+
+def load_habits_from_json() -> List[Habit]:
+    try:
+        if not os.path.exists(HABITS_FILE):
+            return []
+        with open(HABITS_FILE, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+        return [Habit.from_dict(item) for item in data]
+    except Exception as e:
+        print(f"加载习惯失败: {e}")
+        return []
+
+
+def save_water_reminder(water: WaterReminder) -> bool:
+    try:
+        with open(WATER_FILE, 'w', encoding='utf-8') as f:
+            json.dump(water.to_dict(), f, ensure_ascii=False, indent=2)
+        return True
+    except Exception as e:
+        print(f"保存饮水设置失败: {e}")
+        return False
+
+
+def load_water_reminder() -> WaterReminder:
+    try:
+        if not os.path.exists(WATER_FILE):
+            return WaterReminder()
+        with open(WATER_FILE, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+        return WaterReminder.from_dict(data)
+    except Exception as e:
+        print(f"加载饮水设置失败: {e}")
+        return WaterReminder()
 
 
 def save_settings(settings: dict) -> bool:

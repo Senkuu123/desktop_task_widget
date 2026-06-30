@@ -1,25 +1,488 @@
 import sys
-from datetime import datetime
-from PyQt5.QtWidgets import (QApplication, QWidget, QVBoxLayout, QHBoxLayout, 
-                             QListWidget, QListWidgetItem, QPushButton, QCheckBox, 
-                             QLabel, QDialog, QSlider, QGroupBox, QSizePolicy, QMessageBox)
-from PyQt5.QtCore import Qt, QTimer, pyqtSignal
+import ctypes
+from datetime import datetime, timedelta
+from PyQt5.QtWidgets import (QApplication, QWidget, QVBoxLayout, QHBoxLayout,
+                             QListWidget, QListWidgetItem, QPushButton, QCheckBox,
+                             QLabel, QDialog, QSlider, QGroupBox, QSizePolicy, QMessageBox,
+                             QSpinBox, QTimeEdit, QScrollArea)
+from PyQt5.QtCore import Qt, QTimer, QPoint, QTime, pyqtSignal, QPropertyAnimation, QEasingCurve
 from PyQt5.QtGui import QPainter, QColor, QBrush, QPen, QCursor, QIcon
 from task import Task
-from storage import save_tasks_to_json, load_tasks_from_json, archive_task, save_settings, load_settings
+from habit import Habit
+from storage import (save_tasks_to_json, load_tasks_from_json, archive_task,
+                     save_settings, load_settings, save_habits_to_json, load_habits_from_json,
+                     save_water_reminder, load_water_reminder)
 from add_task_dialog import AddTaskDialog
 from edit_task_dialog import EditTaskDialog
+from add_habit_dialog import AddHabitDialog
+from water_reminder import WaterReminder
 from autostart_manager import AutoStartManager, check_startup_permission
 
 
-class TaskListWidgetItem(QWidget):
-    """自定义任务列表项，包含复选框和任务内容"""
-    
-    task_status_changed = pyqtSignal(int, bool)  # task_id, is_done
-    
-    def __init__(self, task, parent=None):
+class WaterProgressBar(QWidget):
+    def __init__(self, parent=None):
         super().__init__(parent)
-        self.task = task
+        self._progress = 0.0
+        self.setFixedHeight(6)
+
+    def set_progress(self, value):
+        self._progress = max(0.0, min(1.0, value))
+        self.update()
+
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.Antialiasing)
+        w, h = self.width(), self.height()
+        painter.setBrush(QColor(60, 60, 60))
+        painter.setPen(Qt.NoPen)
+        painter.drawRoundedRect(0, 0, w, h, 3, 3)
+        fill_w = int(w * self._progress)
+        if fill_w > 0:
+            painter.setBrush(QColor(59, 130, 246))
+            painter.drawRoundedRect(0, 0, fill_w, h, 3, 3)
+        painter.end()
+
+
+class WaterDisplayWidget(QWidget):
+    def __init__(self, water_reminder, parent_window, parent=None):
+        super().__init__(parent)
+        self.water = water_reminder
+        self.parent_window = parent_window
+        self._build_ui()
+        self._refresh_timer = QTimer(self)
+        self._refresh_timer.timeout.connect(self.update_countdown)
+        self._refresh_timer.start(30000)
+
+    def _build_ui(self):
+        root = QVBoxLayout(self)
+        root.setContentsMargins(10, 8, 10, 8)
+        root.setSpacing(6)
+
+        # Header
+        top = QHBoxLayout()
+        top.setSpacing(6)
+        title = QLabel("💧 饮水")
+        title.setStyleSheet("color: rgba(255,255,255,0.9); font-size: 10pt; font-weight: 600;")
+        top.addWidget(title)
+        self.intake_label = QLabel()
+        self.intake_label.setStyleSheet("color: #3B82F6; font-size: 10pt; font-weight: 600;")
+        top.addWidget(self.intake_label)
+        top.addStretch()
+        self.log_toggle_btn = QPushButton("▼")
+        self.log_toggle_btn.setFixedSize(20, 20)
+        self.log_toggle_btn.setToolTip("今日记录")
+        self.log_toggle_btn.setStyleSheet("""
+            QPushButton { background: transparent; border: none; color: rgba(255,255,255,0.5); font-size: 8pt; }
+            QPushButton:hover { color: rgba(255,255,255,0.9); }
+        """)
+        self.log_toggle_btn.clicked.connect(self._toggle_log)
+        top.addWidget(self.log_toggle_btn)
+        settings_btn = QPushButton("⚙")
+        settings_btn.setFixedSize(20, 20)
+        settings_btn.setToolTip("饮水设置")
+        settings_btn.setStyleSheet("""
+            QPushButton { background: transparent; border: none; color: rgba(255,255,255,0.5); font-size: 9pt; }
+            QPushButton:hover { color: rgba(255,255,255,0.9); }
+        """)
+        settings_btn.clicked.connect(self.show_settings)
+        top.addWidget(settings_btn)
+        root.addLayout(top)
+
+        # Progress bar
+        self.progress_bar = WaterProgressBar()
+        root.addWidget(self.progress_bar)
+
+        # Separator
+        sep = QLabel()
+        sep.setFixedHeight(1)
+        sep.setStyleSheet("background: rgba(255,255,255,0.08);")
+        root.addWidget(sep)
+
+        # Reminder
+        mid = QHBoxLayout()
+        mid.setContentsMargins(0, 2, 0, 2)
+        mid.setSpacing(4)
+        self.reminder_time_label = QLabel("--:--")
+        self.reminder_time_label.setStyleSheet("color: rgba(255,255,255,0.9); font-size: 16pt; font-weight: 700;")
+        self.reminder_time_label.setAlignment(Qt.AlignVCenter | Qt.AlignLeft)
+        mid.addWidget(self.reminder_time_label)
+        self.countdown_label = QLabel("")
+        self.countdown_label.setStyleSheet("color: rgba(255,255,255,0.45); font-size: 9pt;")
+        self.countdown_label.setAlignment(Qt.AlignBottom | Qt.AlignLeft)
+        mid.addWidget(self.countdown_label)
+        mid.addStretch()
+        root.addLayout(mid)
+
+        # Buttons (fixed position, always here)
+        self._btn_row_widget = QWidget()
+        btn_row = QHBoxLayout(self._btn_row_widget)
+        btn_row.setContentsMargins(0, 0, 0, 0)
+        btn_row.setSpacing(4)
+        for text in ["喝一杯", "喝半杯", "抿一口", "稍后"]:
+            btn = QPushButton(text)
+            btn.setFixedHeight(26)
+            btn.setCursor(Qt.PointingHandCursor)
+            btn.setStyleSheet("""
+                QPushButton {
+                    background: rgba(255,255,255,0.08); color: rgba(255,255,255,0.8);
+                    border: none; border-radius: 4px; font-size: 9pt; padding: 0 8px;
+                }
+                QPushButton:hover { background: rgba(255,255,255,0.18); }
+                QPushButton:pressed { background: rgba(255,255,255,0.25); }
+            """)
+            btn_row.addWidget(btn)
+            if text == "喝一杯":
+                btn.clicked.connect(self.drink_full)
+            elif text == "喝半杯":
+                btn.clicked.connect(self.drink_half)
+            elif text == "抿一口":
+                btn.clicked.connect(self.drink_quarter)
+            elif text == "稍后":
+                btn.clicked.connect(self.snooze)
+
+        # Log panel (collapsible, inserted into layout after buttons)
+        self.log_container = QWidget()
+        self.log_container.setVisible(False)
+        log_inner = QVBoxLayout(self.log_container)
+        log_inner.setContentsMargins(0, 0, 0, 0)
+        log_inner.setSpacing(0)
+        self.log_scroll = QScrollArea()
+        self.log_scroll.setWidgetResizable(True)
+        self.log_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.log_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        self.log_scroll.setFixedHeight(200)
+        self.log_scroll.setStyleSheet("""
+            QScrollArea { background: transparent; border: none; border-radius: 6px; }
+            QScrollArea > QWidget > QWidget { background: transparent; }
+            QScrollBar:vertical { background: transparent; width: 8px; margin: 0; border-radius: 4px; }
+            QScrollBar::handle:vertical { background: rgba(255,255,255,0.18); border-radius: 4px; min-height: 20px; }
+            QScrollBar::handle:vertical:hover { background: rgba(120, 120, 120, 220); }
+            QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0; }
+            QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical { background: none; }
+        """)
+        self.log_entries_widget = QWidget()
+        self.log_entries_layout = QVBoxLayout(self.log_entries_widget)
+        self.log_entries_layout.setContentsMargins(8, 6, 8, 6)
+        self.log_entries_layout.setSpacing(0)
+        self.log_scroll.setWidget(self.log_entries_widget)
+        log_inner.addWidget(self.log_scroll)
+        root.addWidget(self._btn_row_widget)
+        root.addWidget(self.log_container)
+
+        self._update_all()
+
+    def _update_all(self):
+        self.intake_label.setText(f"{self.water.today_intake}/{self.water.daily_goal}ml")
+        pct = self.water.today_intake / self.water.daily_goal if self.water.daily_goal > 0 else 0
+        self.progress_bar.set_progress(min(pct, 1.0))
+        self.update_countdown()
+
+    def update_countdown(self):
+        self.water.check_daily_reset()
+        time_str, remaining = self.water.get_next_reminder_display()
+        self.reminder_time_label.setText(time_str)
+        self.countdown_label.setText(remaining)
+        self.intake_label.setText(f"{self.water.today_intake}/{self.water.daily_goal}ml")
+        pct = self.water.today_intake / self.water.daily_goal if self.water.daily_goal > 0 else 0
+        self.progress_bar.set_progress(min(pct, 1.0))
+
+    def drink_full(self):
+        ml = self.water.cup_size
+        self.water.add_water(ml)
+        self.water.add_water_log(ml, "喝一杯")
+        self._on_drink()
+
+    def drink_half(self):
+        ml = self.water.cup_size // 2
+        self.water.add_water(ml)
+        self.water.add_water_log(ml, "喝半杯")
+        self._on_drink()
+
+    def drink_quarter(self):
+        ml = self.water.cup_size // 4
+        self.water.add_water(ml)
+        self.water.add_water_log(ml, "抿一口")
+        self._on_drink()
+
+    def _on_drink(self):
+        self._update_all()
+        self._rebuild_log()
+        save_water_reminder(self.water)
+        if self.water.is_completed_today:
+            self.parent_window.show_deadline_notification(
+                "今日饮水目标", 0,
+                msg_override=f"真棒！今日已喝够{self.water.daily_goal}ml！")
+
+    def snooze(self):
+        self.water.snooze(30)
+        self._update_all()
+        save_water_reminder(self.water)
+
+    def show_settings(self):
+        dlg = _WaterSettingsDialog(self.water, self.parent_window)
+        accepted = dlg.exec_() == QDialog.Accepted
+        if accepted:
+            self.water.is_enabled = dlg.get_is_enabled()
+            self.water.cup_size = dlg.get_cup_size()
+            self.water.reminder_interval = dlg.get_interval()
+            self.water.active_start, self.water.active_end = dlg.get_active_range()
+            self.water.quiet_start, self.water.quiet_end = dlg.get_quiet_range()
+            self.water.daily_goal = dlg.get_goal()
+            self.water.next_reminder_time = None
+        if accepted or dlg._reset_done:
+            self._update_all()
+            if self.log_container.isVisible():
+                self._rebuild_log()
+            save_water_reminder(self.water)
+
+    def _toggle_log(self):
+        visible = not self.log_container.isVisible()
+        self.log_container.setVisible(visible)
+        self.log_toggle_btn.setText("▲" if visible else "▼")
+        if visible:
+            self._rebuild_log()
+
+    def _rebuild_log(self):
+        layout = self.log_entries_layout
+        while layout.count():
+            item = layout.takeAt(0)
+            if item.widget():
+                item.widget().deleteLater()
+
+        logs = self.water.today_logs
+        if not logs:
+            lbl = QLabel("暂无记录")
+            lbl.setStyleSheet("color: rgba(255,255,255,0.35); font-size: 9pt; padding: 8px 0;")
+            lbl.setAlignment(Qt.AlignCenter)
+            layout.addWidget(lbl)
+        else:
+            for entry in reversed(logs):
+                row = QHBoxLayout()
+                row.setContentsMargins(0, 5, 0, 5)
+                dot = QLabel("·")
+                dot.setFixedWidth(8)
+                dot.setStyleSheet("color: rgba(255,255,255,0.35); font-size: 10pt;")
+                row.addWidget(dot)
+                time_lbl = QLabel(entry["time"])
+                time_lbl.setFixedWidth(38)
+                time_lbl.setStyleSheet("color: rgba(255,255,255,0.45); font-size: 9pt;")
+                row.addWidget(time_lbl)
+                type_lbl = QLabel(entry["type"])
+                type_lbl.setFixedWidth(40)
+                type_lbl.setStyleSheet("color: rgba(255,255,255,0.85); font-size: 9pt;")
+                row.addWidget(type_lbl)
+                amt_lbl = QLabel(f"{entry['amount']}ml")
+                amt_lbl.setStyleSheet("color: rgba(255,255,255,0.5); font-size: 9pt;")
+                row.addWidget(amt_lbl)
+                row.addStretch()
+                container = QWidget()
+                container.setLayout(row)
+                container.setStyleSheet("border-bottom: 1px solid rgba(255,255,255,0.06);")
+                layout.addWidget(container)
+        layout.addStretch()
+
+
+class _WaterSettingsDialog(QDialog):
+    def __init__(self, water, parent=None):
+        super().__init__(parent)
+        self.water = water
+        self._reset_done = False
+        self.setWindowTitle("饮水设置")
+        self.setWindowModality(Qt.ApplicationModal)
+        self.setFixedSize(350, 430)
+        self.setStyleSheet("""
+            QDialog {
+                background-color: #f0f0f0;
+                font-family: 'Microsoft YaHei', sans-serif;
+            }
+            QLabel {
+                font-size: 12pt;
+                color: #333;
+                font-weight: bold;
+            }
+            QSpinBox, QTimeEdit {
+                font-size: 11pt;
+                padding: 5px;
+                border: 2px solid #ddd;
+                border-radius: 5px;
+                background-color: white;
+            }
+            QSpinBox:focus, QTimeEdit:focus {
+                border-color: #4CAF50;
+            }
+            QCheckBox {
+                font-size: 11pt;
+                color: #333;
+                font-weight: bold;
+                spacing: 6px;
+            }
+            QPushButton {
+                font-size: 11pt;
+                padding: 8px 16px;
+                border: none;
+                border-radius: 5px;
+                font-weight: bold;
+            }
+            QPushButton#okButton {
+                background-color: #4CAF50;
+                color: white;
+            }
+            QPushButton#okButton:hover {
+                background-color: #45a049;
+            }
+            QPushButton#resetButton {
+                background-color: #FF9800;
+                color: white;
+            }
+            QPushButton#resetButton:hover {
+                background-color: #F57C00;
+            }
+            QPushButton#cancelButton {
+                background-color: #f44336;
+                color: white;
+            }
+            QPushButton#cancelButton:hover {
+                background-color: #da190b;
+            }
+        """)
+        layout = QVBoxLayout(self)
+        layout.setSpacing(10)
+        layout.setContentsMargins(20, 20, 20, 20)
+
+        def add_row(label_text, widget):
+            row = QHBoxLayout()
+            lbl = QLabel(label_text)
+            lbl.setFixedWidth(80)
+            row.addWidget(lbl)
+            row.addWidget(widget)
+            layout.addLayout(row)
+
+        self.cup_spin = QSpinBox()
+        self.cup_spin.setRange(50, 2000)
+        self.cup_spin.setValue(water.cup_size)
+        self.cup_spin.setSuffix(" ml")
+        self.cup_spin.setMinimumHeight(35)
+        add_row("一杯容量:", self.cup_spin)
+
+        self.interval_spin = QSpinBox()
+        self.interval_spin.setRange(5, 300)
+        self.interval_spin.setValue(water.reminder_interval)
+        self.interval_spin.setSuffix(" 分钟")
+        self.interval_spin.setMinimumHeight(35)
+        add_row("提醒间隔:", self.interval_spin)
+
+        self.active_start = QTimeEdit()
+        self.active_start.setDisplayFormat("HH:mm")
+        h, m = water.active_start.split(":")
+        self.active_start.setTime(QTime(int(h), int(m)))
+        self.active_start.setMinimumHeight(35)
+        self.active_end = QTimeEdit()
+        self.active_end.setDisplayFormat("HH:mm")
+        h, m = water.active_end.split(":")
+        self.active_end.setTime(QTime(int(h), int(m)))
+        self.active_end.setMinimumHeight(35)
+        row_active = QHBoxLayout()
+        lbl_a = QLabel("活跃时段:")
+        lbl_a.setFixedWidth(80)
+        row_active.addWidget(lbl_a)
+        row_active.addWidget(self.active_start)
+        sep_a = QLabel("~")
+        sep_a.setStyleSheet("font-size: 11pt; color: #333; font-weight: normal;")
+        row_active.addWidget(sep_a)
+        row_active.addWidget(self.active_end)
+        layout.addLayout(row_active)
+
+        self.quiet_start = QTimeEdit()
+        self.quiet_start.setDisplayFormat("HH:mm")
+        h, m = water.quiet_start.split(":")
+        self.quiet_start.setTime(QTime(int(h), int(m)))
+        self.quiet_start.setMinimumHeight(35)
+        self.quiet_end = QTimeEdit()
+        self.quiet_end.setDisplayFormat("HH:mm")
+        h, m = water.quiet_end.split(":")
+        self.quiet_end.setTime(QTime(int(h), int(m)))
+        self.quiet_end.setMinimumHeight(35)
+        row_quiet = QHBoxLayout()
+        lbl_q = QLabel("静音时段:")
+        lbl_q.setFixedWidth(80)
+        row_quiet.addWidget(lbl_q)
+        row_quiet.addWidget(self.quiet_start)
+        sep_q = QLabel("~")
+        sep_q.setStyleSheet("font-size: 11pt; color: #333; font-weight: normal;")
+        row_quiet.addWidget(sep_q)
+        row_quiet.addWidget(self.quiet_end)
+        layout.addLayout(row_quiet)
+
+        self.goal_spin = QSpinBox()
+        self.goal_spin.setRange(500, 10000)
+        self.goal_spin.setValue(water.daily_goal)
+        self.goal_spin.setSuffix(" ml")
+        self.goal_spin.setMinimumHeight(35)
+        add_row("每日目标:", self.goal_spin)
+
+        self.enable_cb = QCheckBox("启用饮水提醒")
+        self.enable_cb.setChecked(water.is_enabled)
+        layout.addWidget(self.enable_cb)
+
+        layout.addStretch()
+        btn_row = QHBoxLayout()
+        reset_btn = QPushButton("重置今日")
+        reset_btn.setObjectName("resetButton")
+        reset_btn.setFixedHeight(36)
+        reset_btn.clicked.connect(self._do_reset)
+        btn_row.addWidget(reset_btn)
+        btn_row.addStretch()
+        cancel = QPushButton("取消")
+        cancel.setObjectName("cancelButton")
+        cancel.clicked.connect(self.reject)
+        ok = QPushButton("确定")
+        ok.setObjectName("okButton")
+        ok.clicked.connect(self.accept)
+        btn_row.addWidget(cancel)
+        btn_row.addWidget(ok)
+        layout.addLayout(btn_row)
+
+    def _do_reset(self):
+        self.water.today_intake = 0
+        self.water.today_logs = []
+        self.water.is_completed_today = False
+        self.water.next_reminder_time = None
+        self._reset_done = True
+
+    def get_cup_size(self):
+        return self.cup_spin.value()
+
+    def get_interval(self):
+        return self.interval_spin.value()
+
+    def get_active_range(self):
+        return self.active_start.time().toString("HH:mm"), self.active_end.time().toString("HH:mm")
+
+    def get_quiet_range(self):
+        return self.quiet_start.time().toString("HH:mm"), self.quiet_end.time().toString("HH:mm")
+
+    def get_goal(self):
+        return self.goal_spin.value()
+
+    def get_is_enabled(self):
+        return self.enable_cb.isChecked()
+
+
+class TaskListWidgetItem(QWidget):
+    """自定义任务列表项，支持任务和习惯两种模式"""
+
+    task_status_changed = pyqtSignal(int, bool)  # task_id, is_done
+    habit_status_changed = pyqtSignal(int, bool)  # habit_id, is_done_today
+
+    def __init__(self, item, parent=None, mode='task'):
+        super().__init__(parent)
+        self.mode = mode
+        if mode == 'habit':
+            self.habit = item
+            self.task = None
+        else:
+            self.task = item
+            self.habit = None
         self.hovered = False
         self.initUI()
         
@@ -45,7 +508,10 @@ class TaskListWidgetItem(QWidget):
         checkbox_layout.setAlignment(Qt.AlignCenter)  # 居中对齐
         
         self.checkbox = QCheckBox()
-        self.checkbox.setChecked(self.task.is_done)
+        if self.mode == 'habit':
+            self.checkbox.setChecked(self.habit.is_done_today)
+        else:
+            self.checkbox.setChecked(self.task.is_done)
         self.checkbox.setFixedSize(25, 25)  # 固定复选框大小
         self.checkbox.setStyleSheet("""
             QCheckBox {
@@ -113,6 +579,10 @@ class TaskListWidgetItem(QWidget):
         
     def update_text_style(self):
         """更新文本内容和样式"""
+        if self.mode == 'habit':
+            self._update_habit_text_style()
+            return
+
         # 简化日期显示逻辑
         deadline_display = self._format_deadline()
         
@@ -167,6 +637,26 @@ class TaskListWidgetItem(QWidget):
         
         self.label.setStyleSheet(text_style)
         self.label.setText(text)
+
+    def _update_habit_text_style(self):
+        """习惯模式的文字样式"""
+        text = f"{self.habit.content} ({self.habit.time})"
+
+        parent = self._get_parent_window()
+        font_size = getattr(parent, 'current_font_size', 11)
+        font_opacity = getattr(parent, 'current_font_opacity', 100)
+        font_alpha = int(font_opacity * 255 / 100)
+
+        if self.habit.is_done_today:
+            color = f"rgba(156, 163, 175, {font_alpha/255})"
+            decoration = "text-decoration: line-through;"
+        else:
+            color = f"rgba(96, 165, 250, {font_alpha/255})"
+            decoration = ""
+
+        style = f"font-size: {font_size}pt; color: {color}; {decoration} font-family: 'Microsoft YaHei', sans-serif;"
+        self.label.setStyleSheet(style)
+        self.label.setText(text)
         
     def _format_deadline(self):
         """格式化截止时间显示"""
@@ -192,18 +682,28 @@ class TaskListWidgetItem(QWidget):
     def on_checkbox_changed(self, state):
         """复选框状态改变处理"""
         is_done = (state == Qt.Checked)
-        
+
+        if self.mode == 'habit':
+            self.habit.is_done_today = is_done
+            if is_done:
+                self.habit.mark_done_today()
+            else:
+                self.habit.mark_undone_today()
+            self.update_text_style()
+            self.habit_status_changed.emit(self.habit.id, is_done)
+            return
+
         # 如果是从未完成变为完成，记录完成时间
         if not self.task.is_done and is_done and self.task.completed_at is None:
             self.task.completed_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        
+
         self.task.is_done = is_done
         self.update_text_style()
         self.task_status_changed.emit(self.task.id, is_done)
         
     def is_task_urgent(self):
         """检查任务是否紧急（1小时内到期）"""
-        if self.task.is_done:
+        if self.mode == 'habit' or self.task.is_done:
             return False
         try:
             deadline_time = self.task.get_deadline_datetime()
@@ -485,10 +985,26 @@ class TransparentTaskWindow(QWidget):
     def __init__(self):
         super().__init__()
         self.tasks = []
+        self.habits = []
         self.task_widgets = {}
         self.current_font_size = 11
         self.current_font_opacity = 100
         self.window_background_opacity = 0.8
+        self.current_page = 'tasks'  # 'tasks' 或 'habits'
+        self.notified_task_ids = set()  # 已弹窗提醒的任务ID集合
+        self.water_reminder = load_water_reminder()
+        self.water_widget = None
+
+        # 贴边隐藏状态
+        self.edge_hidden = False
+        self.edge_hide_pos = None
+        self.edge_restore_timer = None
+        self._hide_anim = None
+        self._show_anim = None
+        self._rehide_timer = None
+        self._should_rehide = False
+        self._current_edge = None
+        self._original_pos = None
         
         # 加载保存的设置
         self.load_window_settings()
@@ -600,7 +1116,12 @@ class TransparentTaskWindow(QWidget):
         list_layout = QVBoxLayout(self.list_container)
         list_layout.setContentsMargins(5, 5, 5, 5)  # 容器边距
         list_layout.setSpacing(0)  # 容器内无间距
-        
+
+        # 饮水小组件（习惯页顶部固定显示）
+        self.water_widget = WaterDisplayWidget(self.water_reminder, self)
+        self.water_widget.setVisible(False)
+        list_layout.addWidget(self.water_widget)
+
         self.task_list_widget = QListWidget()
         # 为列表控件设置唯一ID，防止样式继承冲突
         self.task_list_widget.setObjectName("TaskListWidget")
@@ -628,7 +1149,12 @@ class TransparentTaskWindow(QWidget):
         self.refresh_timer = QTimer()
         self.refresh_timer.timeout.connect(self.refresh_task_display)
         self.refresh_timer.start(60000)
-        
+
+        # 截止时间提醒定时器（每30秒检查一次）
+        self.deadline_notify_timer = QTimer()
+        self.deadline_notify_timer.timeout.connect(self.check_deadline_notifications)
+        self.deadline_notify_timer.start(30000)
+
         self.installEventFilter(self)
         self.update_window_style()
         
@@ -639,20 +1165,30 @@ class TransparentTaskWindow(QWidget):
         """创建顶部栏"""
         drag_area = QWidget()
         drag_area.setFixedHeight(30)
-        
+
         layout = QHBoxLayout(drag_area)
         layout.setContentsMargins(5, 0, 5, 0)
-        
+
         layout.addStretch()
-        
+
+        # 页面切换按钮
+        self.page_toggle_btn = QPushButton("📋")
+        self.page_toggle_btn.setFixedSize(25, 25)
+        self.page_toggle_btn.setToolTip("切换到习惯页")
+        self.page_toggle_btn.clicked.connect(self.toggle_page)
+
         # 按钮配置
         buttons = [
             ("📍", "取消置顶", self.toggle_window_topmost, True),  # 置顶按钮
-            ("➕", None, self.show_add_task_dialog, False),  # 添加按钮
+            ("➕", None, self.show_add_dialog, False),  # 添加按钮
+            (None, None, None, None),  # 占位：切换按钮在此处插入
             ("⚙️", None, self.show_settings_dialog, False)   # 设置按钮
         ]
         
         for icon, tooltip, callback, checkable in buttons:
+            if icon is None:
+                layout.addWidget(self.page_toggle_btn)
+                continue
             btn = QPushButton(icon)
             btn.setFixedSize(25, 25)
             btn.setCheckable(checkable)
@@ -796,9 +1332,26 @@ class TransparentTaskWindow(QWidget):
         self.drag_area.setStyleSheet(f"background: transparent; border-top-left-radius: 5px; border-top-right-radius: 5px;")
         self.list_container.setStyleSheet(f"background: transparent;")
         
-        for btn in [self.add_button, self.pin_button, self.settings_button]:
+        for btn in [self.add_button, self.pin_button, self.settings_button, self.page_toggle_btn]:
             btn.setStyleSheet(button_style)
-        
+
+        # 饮水模块按钮样式
+        if hasattr(self, 'water_widget') and self.water_widget:
+            water_btn_style = f"""
+                QPushButton {{
+                    background: rgba(255, 255, 255, 15);
+                    color: rgba(255, 255, 255, {font_alpha});
+                    border: none;
+                    border-radius: 4px;
+                    padding: 4px 10px;
+                    font-size: 9pt;
+                }}
+                QPushButton:hover {{ background: rgba(255, 255, 255, 30); }}
+            """
+            for btn in self.water_widget.findChildren(QPushButton):
+                if btn.text() in ("喝一杯", "喝半杯", "抿一口", "稍后"):
+                    btn.setStyleSheet(water_btn_style)
+
         # 4. 更新所有任务项的样式和布局，并立即刷新任务项宽度
         self._update_all_task_items_style()
         self._update_task_items_layout()
@@ -848,7 +1401,14 @@ class TransparentTaskWindow(QWidget):
         self.refresh_task_display()
 
     def refresh_task_display(self):
-        """刷新任务显示"""
+        """刷新任务/习惯显示"""
+        if self.current_page == 'habits':
+            self.water_widget.setVisible(True)
+            self.water_widget.update_countdown()
+            self.refresh_habit_display()
+            return
+        self.water_widget.setVisible(False)
+
         # 首先检查并更新所有任务的紧急状态
         for task in self.tasks:
             self._check_and_update_urgency(task)
@@ -895,6 +1455,10 @@ class TransparentTaskWindow(QWidget):
     
     def on_item_double_clicked(self, item):
         """列表项双击事件处理"""
+        if self.current_page == 'habits':
+            self.on_habit_double_clicked(item)
+            return
+
         task_widget = self.task_list_widget.itemWidget(item)
         if task_widget and hasattr(task_widget, 'task'):
             dialog = EditTaskDialog(task_widget.task, self)
@@ -1032,14 +1596,27 @@ class TransparentTaskWindow(QWidget):
             self.last_cursor_pos = pos
     
     def mouseReleaseEvent(self, event):
-        """鼠标释放事件 - 优化版本"""
+        """鼠标释放事件"""
+        was_dragging = self.dragging
+
         if self.dragging or self.resizing:
             self.releaseMouse()
-        
+
         self.dragging = False
         self.resizing = False
         self.resize_direction = None
-        
+
+        # 贴边隐藏：仅非置顶状态、拖动结束后触发
+        if was_dragging and not self.pin_button.isChecked():
+            edge = self._check_near_edge()
+            if edge:
+                self._hide_at_edge(edge)
+                return
+            # 拖动离开边缘，取消自动再隐藏
+            if self._should_rehide:
+                self._should_rehide = False
+                self._stop_rehide_timer()
+
         # 释放后立即同步光标状态
         cursor_pos = self.mapFromGlobal(QCursor.pos())
         if self.rect().contains(cursor_pos):
@@ -1227,12 +1804,21 @@ class TransparentTaskWindow(QWidget):
         return super().eventFilter(obj, event)
     
     def toggle_window_topmost(self):
-        """切换窗口置顶状态 - 优化版本"""
+        """切换窗口置顶状态"""
         is_topmost = self.pin_button.isChecked()
-        
+
+        # 置顶时先恢复贴边隐藏，并禁用自动再隐藏
+        if is_topmost and self.edge_hidden:
+            self._should_rehide = False
+            self._stop_rehide_timer()
+            self._restore_from_edge()
+        if is_topmost:
+            self._should_rehide = False
+            self._stop_rehide_timer()
+
         try:
             current_flags = self.windowFlags()
-            
+
             if is_topmost:
                 new_flags = current_flags | Qt.WindowStaysOnTopHint
                 self.pin_button.setText("📍")
@@ -1241,32 +1827,30 @@ class TransparentTaskWindow(QWidget):
                 new_flags = current_flags & ~Qt.WindowStaysOnTopHint
                 self.pin_button.setText("📌")
                 self.pin_button.setToolTip("窗口置顶")
-            
-            # 保存当前几何信息
+
             current_geometry = self.geometry()
-            
-            # 设置新标志并重新显示
             self.setWindowFlags(new_flags)
-            self.setGeometry(current_geometry)  # 恢复几何信息
+            self.setGeometry(current_geometry)
             self.show()
-            
-            print(f"✅ 窗口置顶状态已切换: {'置顶' if is_topmost else '取消置顶'}")
-            
+
         except Exception as e:
             print(f"⚠️ 切换窗口置顶状态失败: {e}")
-            # 恢复按钮状态
             self.pin_button.setChecked(not is_topmost)
     
     def delayed_task_load(self):
         """延迟加载任务，确保窗口完全初始化后再加载数据"""
         print("🕐 开始延迟加载任务...")
-        
+
         # 加载任务数据
         self.load_tasks()
-        
+        self.habits = load_habits_from_json()
+        self.water_reminder = load_water_reminder()
+        self.water_widget.water = self.water_reminder
+        self.water_widget._update_all()
+
         # 刷新任务显示
         self.refresh_task_display()
-        
+
         print("✅ 任务加载完成，任务栏图标应正常显示")
         
         # 应用加载的窗口位置和大小
@@ -1329,13 +1913,324 @@ class TransparentTaskWindow(QWidget):
                 'current_font_opacity': self.current_font_opacity,
                 'window_geometry': f"{self.x()},{self.y()},{self.width()},{self.height()}"
             }
-            
+
             save_settings(settings)
             print(f"✅ 窗口设置已保存: 位置({self.x()}, {self.y()}), 大小({self.width()}x{self.height()})")
-            
+
         except Exception as e:
             print(f"⚠️ 保存窗口设置失败: {e}")
-    
+
+    # ========== 页面切换 ==========
+
+    def toggle_page(self):
+        if self.current_page == 'tasks':
+            self.current_page = 'habits'
+            self.page_toggle_btn.setText("🔄")
+            self.page_toggle_btn.setToolTip("切换到任务页")
+        else:
+            self.current_page = 'tasks'
+            self.page_toggle_btn.setText("📋")
+            self.page_toggle_btn.setToolTip("切换到习惯页")
+        self.refresh_task_display()
+
+    def show_add_dialog(self):
+        if self.current_page == 'tasks':
+            self.show_add_task_dialog()
+        else:
+            self.show_add_habit_dialog()
+
+    # ========== 习惯管理 ==========
+
+    def show_add_habit_dialog(self):
+        dialog = AddHabitDialog(parent=self)
+        if dialog.exec_() == QDialog.Accepted:
+            content, time_str, _ = dialog.get_habit_data()
+            if content:
+                self.add_new_habit(content, time_str)
+
+    def add_new_habit(self, content, time_str):
+        habit = Habit(content, time_str)
+        self.habits.append(habit)
+        self.save_habits()
+        self.refresh_task_display()
+
+    def save_habits(self):
+        save_habits_to_json(self.habits)
+
+    def refresh_habit_display(self):
+        for h in self.habits:
+            h.check_daily_reset()
+
+        self.task_list_widget.clear()
+        self.task_widgets.clear()
+
+        habits_sorted = sorted(self.habits, key=lambda h: h.time)
+        done_habits = [h for h in habits_sorted if h.is_done_today]
+        undone_habits = [h for h in habits_sorted if not h.is_done_today]
+
+        for habit in undone_habits + done_habits:
+            widget = TaskListWidgetItem(habit, self, mode='habit')
+            self.task_widgets[habit.id] = widget
+            widget.habit_status_changed.connect(self.on_habit_status_changed)
+
+            item = QListWidgetItem(self.task_list_widget)
+            item.setSizeHint(widget.sizeHint())
+            item.setFlags(item.flags() & ~Qt.ItemIsSelectable)
+            self.task_list_widget.setItemWidget(item, widget)
+            widget.update_text_style()
+
+    def on_habit_status_changed(self, habit_id, is_done):
+        for h in self.habits:
+            if h.id == habit_id:
+                h.is_done_today = is_done
+                if is_done:
+                    h.mark_done_today()
+                else:
+                    h.mark_undone_today()
+                break
+        self.save_habits()
+        self.refresh_task_display()
+
+    def on_habit_double_clicked(self, item):
+        widget = self.task_list_widget.itemWidget(item)
+        if not widget or not hasattr(widget, 'habit'):
+            return
+
+        dialog = AddHabitDialog(habit=widget.habit, parent=self)
+        dialog.exec_()
+
+        content, time_str, to_delete = dialog.get_habit_data()
+
+        if to_delete:
+            self.habits = [h for h in self.habits if h.id != widget.habit.id]
+        elif content:
+            widget.habit.content = content
+            widget.habit.time = time_str
+
+        self.save_habits()
+        self.refresh_task_display()
+
+    # ========== 截止时间弹窗提醒 ==========
+
+    def check_deadline_notifications(self):
+        now = datetime.now()
+        all_tasks = [t for t in self.tasks if not t.is_archived]
+        all_habits = self.habits
+
+        # 检查任务
+        for task in all_tasks:
+            if task.is_done:
+                self.notified_task_ids.discard(task.id)
+                continue
+            try:
+                time_diff = (task.get_deadline_datetime() - now).total_seconds()
+                if time_diff <= 3600 and task.id not in self.notified_task_ids:
+                    self.notified_task_ids.add(task.id)
+                    minutes_left = int(time_diff / 60)
+                    self.show_deadline_notification(task.content, minutes_left)
+            except Exception:
+                pass
+
+        # 检查习惯（如果设置了时间，且当前未完成）
+        for habit in all_habits:
+            if habit.is_done_today:
+                continue
+            try:
+                h, m = habit.time.split(":")
+                habit_dt = now.replace(hour=int(h), minute=int(m), second=0, microsecond=0)
+                time_diff = (habit_dt - now).total_seconds()
+                if time_diff <= 3600 and habit.id not in self.notified_task_ids:
+                    self.notified_task_ids.add(habit.id)
+                    minutes_left = int(time_diff / 60)
+                    self.show_deadline_notification(habit.content, minutes_left)
+            except Exception:
+                pass
+
+        # 饮水提醒
+        if self.water_reminder:
+            water_msg = self.water_reminder.update_reminder()
+            if water_msg:
+                self.show_deadline_notification("饮水提醒", 0, msg_override=water_msg)
+            if self.water_widget and self.water_widget.isVisible():
+                self.water_widget.update_countdown()
+
+    def show_deadline_notification(self, content, minutes_left, msg_override=None):
+        """弹出Windows系统通知（右下角通知中心）"""
+        title = "任务提醒"
+        if msg_override:
+            msg = msg_override
+        else:
+            msg = f"「{content}」将在 {minutes_left} 分钟后到期！"
+        try:
+            from winotify import Notification, audio
+            toast = Notification(
+                app_id="桌面任务小组件",
+                title=title,
+                msg=msg,
+                duration="long",
+            )
+            toast.set_audio(audio.Default, loop=False)
+            toast.show()
+        except ImportError:
+            # winotify未安装，回退到MessageBoxW
+            try:
+                ctypes.windll.user32.MessageBoxW(
+                    0, msg, title,
+                    0x00000040 | 0x00001000
+                )
+            except Exception as e:
+                print(f"弹窗提醒失败: {e}")
+        except Exception as e:
+            print(f"通知发送失败: {e}")
+
+    def _check_near_edge(self):
+        """检测窗口是否在屏幕边缘附近，返回边缘名或None"""
+        geo = self.geometry()
+        screen = QApplication.screenAt(geo.center())
+        if screen is None:
+            screen = QApplication.primaryScreen()
+        sg = screen.geometry()
+        threshold = 5
+
+        if geo.left() <= sg.left() + threshold:
+            return 'left'
+        if geo.right() >= sg.right() - threshold:
+            return 'right'
+        if geo.top() <= sg.top() + threshold:
+            return 'top'
+        return None
+
+    def _hide_at_edge(self, edge):
+        """窗口滑出屏幕边缘，只露出2px边界"""
+        if self.edge_hidden:
+            return
+        self.edge_hidden = True
+        self._current_edge = edge
+        self._should_rehide = True
+        self._original_pos = self.pos()
+        self._stop_restore_timer()
+        self._stop_rehide_timer()
+
+        geo = self.geometry()
+        screen = QApplication.screenAt(geo.center())
+        if screen is None:
+            screen = QApplication.primaryScreen()
+        sg = screen.geometry()
+
+        targets = {
+            'left':   (sg.left() - geo.width() + 2, geo.y()),
+            'right':  (sg.right() - 2, geo.y()),
+            'top':    (geo.x(), sg.top() - geo.height() + 2),
+        }
+        tx, ty = targets.get(edge, (geo.x(), geo.y()))
+        self._edge_hide_pos = (tx, ty)
+
+        anim = QPropertyAnimation(self, b"pos")
+        anim.setDuration(300)
+        anim.setEasingCurve(QEasingCurve.InOutCubic)
+        anim.setEndValue(QPoint(tx, ty))
+        anim.finished.connect(self._on_hide_anim_done)
+        self._hide_anim = anim
+        anim.start()
+
+    def _on_hide_anim_done(self):
+        if self.edge_hidden:
+            self._start_restore_timer()
+
+    def _restore_from_edge(self):
+        """窗口滑回原始位置"""
+        if not self.edge_hidden:
+            return
+        self.edge_hidden = False
+        self._stop_restore_timer()
+
+        if self._hide_anim and self._hide_anim.state() == QPropertyAnimation.Running:
+            self._hide_anim.stop()
+        if self._show_anim and self._show_anim.state() == QPropertyAnimation.Running:
+            self._show_anim.stop()
+
+        orig = self._original_pos if self._original_pos else self.pos()
+        screen = QApplication.screenAt(orig)
+        if screen:
+            sg = screen.geometry()
+        else:
+            sg = QApplication.primaryScreen().geometry()
+        ox = max(sg.left(), min(orig.x(), sg.right() - self.width()))
+        oy = max(sg.top(), min(orig.y(), sg.bottom() - self.height()))
+
+        anim = QPropertyAnimation(self, b"pos")
+        anim.setDuration(300)
+        anim.setEasingCurve(QEasingCurve.InOutCubic)
+        anim.setEndValue(QPoint(ox, oy))
+        anim.finished.connect(self._on_restore_anim_done)
+        self._show_anim = anim
+        anim.start()
+
+    def _on_restore_anim_done(self):
+        if self._should_rehide and self._current_edge:
+            self._start_rehide_timer()
+
+    def _start_restore_timer(self):
+        if self.edge_restore_timer:
+            return
+        self.edge_restore_timer = QTimer(self)
+        self.edge_restore_timer.timeout.connect(self._check_cursor_near_hidden_edge)
+        self.edge_restore_timer.start(100)
+
+    def _stop_restore_timer(self):
+        if self.edge_restore_timer:
+            self.edge_restore_timer.stop()
+            self.edge_restore_timer = None
+
+    def _check_cursor_near_hidden_edge(self):
+        """检测光标是否靠近被隐藏的边缘，满足则恢复窗口"""
+        if not self.edge_hidden or not self._current_edge:
+            return
+        pos = QCursor.pos()
+        geo = self.geometry()
+        edge = self._current_edge
+        screen = QApplication.screenAt(pos)
+        if screen is None:
+            screen = QApplication.primaryScreen()
+        sg = screen.geometry()
+
+        in_zone = False
+        if edge == 'left':
+            in_zone = (pos.x() <= sg.left() + 5
+                       and abs(pos.y() - geo.center().y()) < geo.height() // 2 + 20)
+        elif edge == 'right':
+            in_zone = (pos.x() >= sg.right() - 5
+                       and abs(pos.y() - geo.center().y()) < geo.height() // 2 + 20)
+        elif edge == 'top':
+            in_zone = (pos.y() <= sg.top() + 5
+                       and abs(pos.x() - geo.center().x()) < geo.width() // 2 + 20)
+
+        if in_zone:
+            self._restore_from_edge()
+
+    def _start_rehide_timer(self):
+        if self._rehide_timer:
+            return
+        self._rehide_timer = QTimer(self)
+        self._rehide_timer.timeout.connect(self._check_rehide)
+        self._rehide_timer.start(200)
+
+    def _stop_rehide_timer(self):
+        if self._rehide_timer:
+            self._rehide_timer.stop()
+            self._rehide_timer = None
+
+    def _check_rehide(self):
+        if not self._should_rehide or not self._current_edge:
+            self._stop_rehide_timer()
+            return
+        cursor = QCursor.pos()
+        geo = self.geometry()
+        if not geo.contains(cursor):
+            self._stop_rehide_timer()
+            edge = self._current_edge
+            self._hide_at_edge(edge)
+
 
 if __name__ == '__main__':
     # 高DPI缩放支持
