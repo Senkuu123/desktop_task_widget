@@ -94,7 +94,7 @@ class WaterReminder:
         if self.is_completed_today:
             return "目标完成", ""
         if not self._is_active_hours():
-            return "非活跃时段", ""
+            return "未到开启时段", ""
         if self._is_quiet_hours():
             end = self._parse_time_today(self.quiet_end)
             now = datetime.now()

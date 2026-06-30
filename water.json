@@ -1,13 +1,13 @@
 {
   "is_enabled": true,
-  "cup_size": 250,
+  "cup_size": 260,
   "reminder_interval": 5,
   "active_start": "08:00",
-  "active_end": "22:00",
+  "active_end": "23:45",
   "quiet_start": "12:00",
   "quiet_end": "13:00",
   "daily_goal": 2000,
-  "today_intake": 874,
+  "today_intake": 1249,
   "today_date": "2026-06-30",
   "is_completed_today": false,
   "today_logs": [
@@ -50,7 +50,17 @@
       "time": "19:12",
       "amount": 125,
       "type": "喝半杯"
+    },
+    {
+      "time": "22:16",
+      "amount": 125,
+      "type": "喝半杯"
+    },
+    {
+      "time": "22:16",
+      "amount": 250,
+      "type": "喝一杯"
     }
   ],
-  "next_reminder_time": "2026-06-30 19:17:09"
+  "next_reminder_time": "2026-06-30 22:24:15"
 }

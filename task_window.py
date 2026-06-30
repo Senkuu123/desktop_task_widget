@@ -58,15 +58,12 @@ class WaterDisplayWidget(QWidget):
         root.setContentsMargins(10, 8, 10, 8)
         root.setSpacing(6)
 
-        # Header
+        # Title row
         top = QHBoxLayout()
         top.setSpacing(6)
-        title = QLabel("💧 饮水")
+        title = QLabel("今日饮水进度")
         title.setStyleSheet("color: rgba(255,255,255,0.9); font-size: 10pt; font-weight: 600;")
         top.addWidget(title)
-        self.intake_label = QLabel()
-        self.intake_label.setStyleSheet("color: #3B82F6; font-size: 10pt; font-weight: 600;")
-        top.addWidget(self.intake_label)
         top.addStretch()
         self.log_toggle_btn = QPushButton("▼")
         self.log_toggle_btn.setFixedSize(20, 20)
@@ -88,9 +85,21 @@ class WaterDisplayWidget(QWidget):
         top.addWidget(settings_btn)
         root.addLayout(top)
 
+        # Intake display
+        self.intake_label = QLabel()
+        self.intake_label.setTextFormat(Qt.RichText)
+        self.intake_label.setStyleSheet("background: transparent;")
+        self.intake_label.setContentsMargins(-4, 0, 0, 0)
+        root.addWidget(self.intake_label)
+
         # Progress bar
         self.progress_bar = WaterProgressBar()
         root.addWidget(self.progress_bar)
+
+        # Progress stats
+        self.progress_stats = QLabel()
+        self.progress_stats.setStyleSheet("color: rgba(255,255,255,0.4); font-size: 9pt;")
+        root.addWidget(self.progress_stats)
 
         # Separator
         sep = QLabel()
@@ -98,7 +107,7 @@ class WaterDisplayWidget(QWidget):
         sep.setStyleSheet("background: rgba(255,255,255,0.08);")
         root.addWidget(sep)
 
-        # Reminder
+        # Countdown
         mid = QHBoxLayout()
         mid.setContentsMargins(0, 2, 0, 2)
         mid.setSpacing(4)
@@ -113,32 +122,44 @@ class WaterDisplayWidget(QWidget):
         mid.addStretch()
         root.addLayout(mid)
 
-        # Buttons (fixed position, always here)
+        # Buttons
         self._btn_row_widget = QWidget()
         btn_row = QHBoxLayout(self._btn_row_widget)
         btn_row.setContentsMargins(0, 0, 0, 0)
         btn_row.setSpacing(4)
-        for text in ["喝一杯", "喝半杯", "抿一口", "稍后"]:
-            btn = QPushButton(text)
-            btn.setFixedHeight(26)
+
+        btn_style = """
+            QPushButton {
+                background: rgba(255,255,255,0.08); color: rgba(255,255,255,0.85);
+                border: none; border-radius: 6px; font-size: 10pt; padding: 6px 0;
+            }
+            QPushButton:hover { background: rgba(255,255,255,0.18); }
+            QPushButton:pressed { background: rgba(255,255,255,0.25); }
+        """
+
+        def make_btn(icon, line1, line2, callback):
+            btn = QPushButton()
             btn.setCursor(Qt.PointingHandCursor)
-            btn.setStyleSheet("""
-                QPushButton {
-                    background: rgba(255,255,255,0.08); color: rgba(255,255,255,0.8);
-                    border: none; border-radius: 4px; font-size: 9pt; padding: 0 8px;
-                }
-                QPushButton:hover { background: rgba(255,255,255,0.18); }
-                QPushButton:pressed { background: rgba(255,255,255,0.25); }
-            """)
+            btn.setStyleSheet(btn_style)
+            btn.setMinimumHeight(44)
+            lbl = QLabel(f"{icon} {line1}\n{line2}" if icon else f"{line1}\n{line2}")
+            lbl.setAlignment(Qt.AlignCenter)
+            lbl.setStyleSheet("background: transparent; color: rgba(255,255,255,0.85); font-size: 10pt;")
+            layout = QVBoxLayout(btn)
+            layout.setContentsMargins(0, 4, 0, 4)
+            layout.addWidget(lbl)
+            btn.clicked.connect(callback)
             btn_row.addWidget(btn)
-            if text == "喝一杯":
-                btn.clicked.connect(self.drink_full)
-            elif text == "喝半杯":
-                btn.clicked.connect(self.drink_half)
-            elif text == "抿一口":
-                btn.clicked.connect(self.drink_quarter)
-            elif text == "稍后":
-                btn.clicked.connect(self.snooze)
+            return btn, lbl
+
+        self._drink_full_btn, self._drink_full_lbl = make_btn(
+            "🥛", "喝一杯", f"+{self.water.cup_size}ml", self.drink_full)
+        self._drink_half_btn, self._drink_half_lbl = make_btn(
+            "", "喝半杯", f"+{self.water.cup_size // 2}ml", self.drink_half)
+        self._snooze_btn, self._snooze_lbl = make_btn(
+            "⏰", "稍后提醒", "30分钟后", self.snooze)
+
+        root.addWidget(self._btn_row_widget)
 
         # Log panel (collapsible, inserted into layout after buttons)
         self.log_container = QWidget()
@@ -166,25 +187,50 @@ class WaterDisplayWidget(QWidget):
         self.log_entries_layout.setSpacing(0)
         self.log_scroll.setWidget(self.log_entries_widget)
         log_inner.addWidget(self.log_scroll)
-        root.addWidget(self._btn_row_widget)
         root.addWidget(self.log_container)
 
         self._update_all()
 
     def _update_all(self):
-        self.intake_label.setText(f"{self.water.today_intake}/{self.water.daily_goal}ml")
+        self._update_intake()
+        self.update_countdown()
+
+    def _update_intake(self):
+        self.intake_label.setText(
+            f'<span style="color:#3B82F6; font-size:18pt; font-weight:700;">💧{self.water.today_intake}</span>'
+            f'<span style="color:rgba(255,255,255,0.35); font-size:11pt;">/{self.water.daily_goal}ml</span>'
+        )
         pct = self.water.today_intake / self.water.daily_goal if self.water.daily_goal > 0 else 0
         self.progress_bar.set_progress(min(pct, 1.0))
-        self.update_countdown()
+        pct_int = int(pct * 100)
+        remaining = max(0, self.water.daily_goal - self.water.today_intake)
+        if self.water.today_intake >= self.water.daily_goal:
+            self.progress_stats.setText("今日目标已达成！")
+        else:
+            self.progress_stats.setText(f"达成 {pct_int}% · 还差 {remaining}ml即可达成今日目标")
+
+    def _update_btn_labels(self):
+        self._drink_full_lbl.setText(f"🥛 喝一杯\n+{self.water.cup_size}ml")
+        self._drink_half_lbl.setText(f"喝半杯\n+{self.water.cup_size // 2}ml")
 
     def update_countdown(self):
         self.water.check_daily_reset()
-        time_str, remaining = self.water.get_next_reminder_display()
+        time_str, _ = self.water.get_next_reminder_display()
         self.reminder_time_label.setText(time_str)
-        self.countdown_label.setText(remaining)
-        self.intake_label.setText(f"{self.water.today_intake}/{self.water.daily_goal}ml")
-        pct = self.water.today_intake / self.water.daily_goal if self.water.daily_goal > 0 else 0
-        self.progress_bar.set_progress(min(pct, 1.0))
+        # 计算剩余时间（MM:SS格式）
+        if (self.water.next_reminder_time and self.water.is_enabled
+                and not self.water.is_completed_today
+                and self.water._is_active_hours() and not self.water._is_quiet_hours()):
+            diff = (self.water.next_reminder_time - datetime.now()).total_seconds()
+            if diff > 0:
+                mins = int(diff // 60)
+                secs = int(diff % 60)
+                self.countdown_label.setText(f"还剩 {mins:02d}:{secs:02d}")
+            else:
+                self.countdown_label.setText("即将提醒")
+        else:
+            self.countdown_label.setText("")
+        self._update_intake()
 
     def drink_full(self):
         ml = self.water.cup_size
@@ -196,12 +242,6 @@ class WaterDisplayWidget(QWidget):
         ml = self.water.cup_size // 2
         self.water.add_water(ml)
         self.water.add_water_log(ml, "喝半杯")
-        self._on_drink()
-
-    def drink_quarter(self):
-        ml = self.water.cup_size // 4
-        self.water.add_water(ml)
-        self.water.add_water_log(ml, "抿一口")
         self._on_drink()
 
     def _on_drink(self):
@@ -231,6 +271,7 @@ class WaterDisplayWidget(QWidget):
             self.water.next_reminder_time = None
         if accepted or dlg._reset_done:
             self._update_all()
+            self._update_btn_labels()
             if self.log_container.isVisible():
                 self._rebuild_log()
             save_water_reminder(self.water)
@@ -382,7 +423,7 @@ class _WaterSettingsDialog(QDialog):
         self.active_end.setTime(QTime(int(h), int(m)))
         self.active_end.setMinimumHeight(35)
         row_active = QHBoxLayout()
-        lbl_a = QLabel("活跃时段:")
+        lbl_a = QLabel("开启时段:")
         lbl_a.setFixedWidth(80)
         row_active.addWidget(lbl_a)
         row_active.addWidget(self.active_start)
@@ -2039,7 +2080,7 @@ class TransparentTaskWindow(QWidget):
                 h, m = habit.time.split(":")
                 habit_dt = now.replace(hour=int(h), minute=int(m), second=0, microsecond=0)
                 time_diff = (habit_dt - now).total_seconds()
-                if time_diff <= 3600 and habit.id not in self.notified_task_ids:
+                if 0 < time_diff <= 3600 and habit.id not in self.notified_task_ids:
                     self.notified_task_ids.add(habit.id)
                     minutes_left = int(time_diff / 60)
                     self.show_deadline_notification(habit.content, minutes_left)
