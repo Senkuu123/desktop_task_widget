@@ -216,9 +216,8 @@ class WaterDisplayWidget(QWidget):
 
     def update_countdown(self):
         self.water.check_daily_reset()
-        time_str, _ = self.water.get_next_reminder_display()
+        time_str, sub_text = self.water.get_next_reminder_display()
         self.reminder_time_label.setText(time_str)
-        # 计算剩余时间（MM:SS格式）
         if (self.water.next_reminder_time and self.water.is_enabled
                 and not self.water.is_completed_today
                 and self.water._is_active_hours() and not self.water._is_quiet_hours()):
@@ -227,9 +226,9 @@ class WaterDisplayWidget(QWidget):
                 mins = int(diff // 60)
                 self.countdown_label.setText(f"还剩 {mins}分钟")
             else:
-                self.countdown_label.setText("即将提醒")
+                self.countdown_label.setText("")
         else:
-            self.countdown_label.setText("")
+            self.countdown_label.setText(sub_text)
         self._update_intake()
 
     def drink_full(self):
@@ -331,165 +330,129 @@ class _WaterSettingsDialog(QDialog):
         self._reset_done = False
         self.setWindowTitle("饮水设置")
         self.setWindowModality(Qt.ApplicationModal)
-        self.setFixedSize(350, 470)
-        self.setStyleSheet("""
-            QDialog {
-                background-color: #f0f0f0;
-                font-family: 'Microsoft YaHei', sans-serif;
-            }
-            QLabel {
-                font-size: 12pt;
-                color: #333;
-                font-weight: bold;
-            }
-            QSpinBox, QTimeEdit {
-                font-size: 11pt;
-                padding: 5px;
-                border: 2px solid #ddd;
-                border-radius: 5px;
-                background-color: white;
-            }
-            QSpinBox:focus, QTimeEdit:focus {
-                border-color: #4CAF50;
-            }
-            QCheckBox {
-                font-size: 11pt;
-                color: #333;
-                font-weight: bold;
-                spacing: 6px;
-            }
-            QPushButton {
-                font-size: 11pt;
-                padding: 8px 16px;
-                border: none;
-                border-radius: 5px;
-                font-weight: bold;
-            }
-            QPushButton#okButton {
-                background-color: #4CAF50;
-                color: white;
-            }
-            QPushButton#okButton:hover {
-                background-color: #45a049;
-            }
-            QPushButton#resetButton {
-                background-color: #FF9800;
-                color: white;
-            }
-            QPushButton#resetButton:hover {
-                background-color: #F57C00;
-            }
-            QPushButton#cancelButton {
-                background-color: #f44336;
-                color: white;
-            }
-            QPushButton#cancelButton:hover {
-                background-color: #da190b;
-            }
-        """)
-        layout = QVBoxLayout(self)
-        layout.setSpacing(10)
-        layout.setContentsMargins(20, 20, 20, 20)
 
-        def add_row(label_text, widget):
-            row = QHBoxLayout()
+        font = self.font()
+        font.setPointSize(font.pointSize() + 1)
+        self.setFont(font)
+
+        layout = QVBoxLayout()
+        layout.setContentsMargins(16, 16, 16, 16)
+        layout.setSpacing(10)
+
+        def _labeled(label_text, widget):
+            w = QWidget()
+            row = QHBoxLayout(w)
+            row.setContentsMargins(0, 0, 0, 0)
             lbl = QLabel(label_text)
-            lbl.setFixedWidth(80)
+            lbl.setFixedWidth(70)
             row.addWidget(lbl)
             row.addWidget(widget)
-            layout.addLayout(row)
+            return w
+
+        def _range_widget(start_w, end_w):
+            w = QWidget()
+            r = QHBoxLayout(w)
+            r.setContentsMargins(0, 0, 0, 0)
+            r.addWidget(start_w)
+            sep = QLabel("至")
+            sep.setStyleSheet("color: #666;")
+            r.addWidget(sep)
+            r.addWidget(end_w)
+            return w
+
+        # 饮水设置组
+        drink_group = QGroupBox("饮水设置")
+        dg_layout = QVBoxLayout()
+
+        self.enable_cb = QCheckBox("启用饮水提醒")
+        self.enable_cb.setChecked(water.is_enabled)
+        dg_layout.addWidget(self.enable_cb)
 
         self.cup_spin = QSpinBox()
         self.cup_spin.setRange(50, 2000)
         self.cup_spin.setValue(water.cup_size)
         self.cup_spin.setSuffix(" ml")
-        self.cup_spin.setMinimumHeight(35)
-        add_row("一杯容量:", self.cup_spin)
+        self.cup_spin.setMinimumHeight(30)
+        dg_layout.addWidget(_labeled("一杯容量", self.cup_spin))
 
         self.interval_spin = QSpinBox()
         self.interval_spin.setRange(5, 300)
         self.interval_spin.setValue(water.reminder_interval)
         self.interval_spin.setSuffix(" 分钟")
-        self.interval_spin.setMinimumHeight(35)
-        add_row("提醒间隔:", self.interval_spin)
+        self.interval_spin.setMinimumHeight(30)
+        dg_layout.addWidget(_labeled("提醒间隔", self.interval_spin))
 
         self.snooze_spin = QSpinBox()
         self.snooze_spin.setRange(5, 120)
         self.snooze_spin.setValue(water.snooze_interval)
         self.snooze_spin.setSuffix(" 分钟")
-        self.snooze_spin.setMinimumHeight(35)
-        add_row("稍后提醒:", self.snooze_spin)
+        self.snooze_spin.setMinimumHeight(30)
+        dg_layout.addWidget(_labeled("稍后提醒", self.snooze_spin))
+
+        drink_group.setLayout(dg_layout)
+        layout.addWidget(drink_group)
+
+        # 时段设置组
+        time_group = QGroupBox("时段设置")
+        tg_layout = QVBoxLayout()
 
         self.active_start = QTimeEdit()
         self.active_start.setDisplayFormat("HH:mm")
         h, m = water.active_start.split(":")
         self.active_start.setTime(QTime(int(h), int(m)))
-        self.active_start.setMinimumHeight(35)
+        self.active_start.setMinimumHeight(30)
         self.active_end = QTimeEdit()
         self.active_end.setDisplayFormat("HH:mm")
         h, m = water.active_end.split(":")
         self.active_end.setTime(QTime(int(h), int(m)))
-        self.active_end.setMinimumHeight(35)
-        row_active = QHBoxLayout()
-        lbl_a = QLabel("开启时段:")
-        lbl_a.setFixedWidth(80)
-        row_active.addWidget(lbl_a)
-        row_active.addWidget(self.active_start)
-        sep_a = QLabel("~")
-        sep_a.setStyleSheet("font-size: 11pt; color: #333; font-weight: normal;")
-        row_active.addWidget(sep_a)
-        row_active.addWidget(self.active_end)
-        layout.addLayout(row_active)
+        self.active_end.setMinimumHeight(30)
+        tg_layout.addWidget(_labeled("开启时段", _range_widget(self.active_start, self.active_end)))
 
         self.quiet_start = QTimeEdit()
         self.quiet_start.setDisplayFormat("HH:mm")
         h, m = water.quiet_start.split(":")
         self.quiet_start.setTime(QTime(int(h), int(m)))
-        self.quiet_start.setMinimumHeight(35)
+        self.quiet_start.setMinimumHeight(30)
         self.quiet_end = QTimeEdit()
         self.quiet_end.setDisplayFormat("HH:mm")
         h, m = water.quiet_end.split(":")
         self.quiet_end.setTime(QTime(int(h), int(m)))
-        self.quiet_end.setMinimumHeight(35)
-        row_quiet = QHBoxLayout()
-        lbl_q = QLabel("静音时段:")
-        lbl_q.setFixedWidth(80)
-        row_quiet.addWidget(lbl_q)
-        row_quiet.addWidget(self.quiet_start)
-        sep_q = QLabel("~")
-        sep_q.setStyleSheet("font-size: 11pt; color: #333; font-weight: normal;")
-        row_quiet.addWidget(sep_q)
-        row_quiet.addWidget(self.quiet_end)
-        layout.addLayout(row_quiet)
+        self.quiet_end.setMinimumHeight(30)
+        tg_layout.addWidget(_labeled("静音时段", _range_widget(self.quiet_start, self.quiet_end)))
 
+        time_group.setLayout(tg_layout)
+        layout.addWidget(time_group)
+
+        # 每日目标组
+        goal_group = QGroupBox("每日目标")
+        gg_layout = QVBoxLayout()
         self.goal_spin = QSpinBox()
         self.goal_spin.setRange(500, 10000)
         self.goal_spin.setValue(water.daily_goal)
         self.goal_spin.setSuffix(" ml")
-        self.goal_spin.setMinimumHeight(35)
-        add_row("每日目标:", self.goal_spin)
-
-        self.enable_cb = QCheckBox("启用饮水提醒")
-        self.enable_cb.setChecked(water.is_enabled)
-        layout.addWidget(self.enable_cb)
+        self.goal_spin.setMinimumHeight(30)
+        gg_layout.addWidget(self.goal_spin)
+        goal_group.setLayout(gg_layout)
+        layout.addWidget(goal_group)
 
         layout.addStretch()
+
         btn_row = QHBoxLayout()
         reset_btn = QPushButton("重置今日")
-        reset_btn.setObjectName("resetButton")
-        reset_btn.setFixedHeight(36)
+        reset_btn.setFixedHeight(32)
         reset_btn.clicked.connect(self._do_reset)
         btn_row.addWidget(reset_btn)
         btn_row.addStretch()
         cancel = QPushButton("取消")
-        cancel.setObjectName("cancelButton")
         cancel.clicked.connect(self.reject)
         ok = QPushButton("确定")
-        ok.setObjectName("okButton")
         ok.clicked.connect(self.accept)
         btn_row.addWidget(cancel)
         btn_row.addWidget(ok)
         layout.addLayout(btn_row)
+
+        self.setLayout(layout)
+        self.setMinimumSize(340, 440)
 
     def _do_reset(self):
         self.water.today_intake = 0
@@ -869,14 +832,13 @@ class SettingsDialog(QDialog):
         self.setWindowTitle("设置")
         self.setWindowModality(Qt.ApplicationModal)
         # self.setFixedSize(300, 420)  # 注释掉固定尺寸
-        
+
         layout = QVBoxLayout()
-        layout.setContentsMargins(20, 20, 20, 20)  # 增加内边距
-        layout.setSpacing(15)
-        
-        # 使用系统默认字体，稍微增大
+        layout.setContentsMargins(16, 16, 16, 16)
+        layout.setSpacing(10)
+
         font = self.font()
-        font.setPointSize(font.pointSize() + 3)
+        font.setPointSize(font.pointSize() + 1)
         self.setFont(font)
 
         # 创建设置组
@@ -924,7 +886,7 @@ class SettingsDialog(QDialog):
         
         layout.addLayout(button_layout)
         self.setLayout(layout)
-        self.setMinimumSize(350, 450)  # 设置最小尺寸
+        self.setMinimumSize(300, 380)
 
     def _create_autostart_group(self):
         """创建开机自启动设置组"""
@@ -937,12 +899,12 @@ class SettingsDialog(QDialog):
         self.autostart_checkbox = QCheckBox("开机时自动启动")
         self.autostart_checkbox.setChecked(self.autostart_manager.is_enabled())
         self.autostart_checkbox.stateChanged.connect(self.on_autostart_changed)
-        
+
         # 设置复选框字体（增大字体以适应高DPI）
         checkbox_font = self.autostart_checkbox.font()
-        checkbox_font.setPointSize(self.font().pointSize() + 1)  # 增大1个点以适应高DPI
+        checkbox_font.setPointSize(self.font().pointSize())
         self.autostart_checkbox.setFont(checkbox_font)
-        
+
         self.autostart_status_label = QLabel()
         self.autostart_status_label.setStyleSheet("color: #666;")
         self.update_autostart_status()
@@ -982,12 +944,12 @@ class SettingsDialog(QDialog):
         """更新开机自启动状态显示"""
         status_text = self.autostart_manager.get_status_text()
         self.autostart_status_label.setText(status_text)
-        
+
         if self.autostart_manager.is_enabled():
             self.autostart_status_label.setStyleSheet("color: #4CAF50;")
         else:
             self.autostart_status_label.setStyleSheet("color: #666;")
-    
+
     def on_autostart_changed(self, state):
         """开机自启动复选框状态改变"""
         try:
@@ -1011,12 +973,12 @@ class SettingsDialog(QDialog):
         """更新开机自启动状态显示"""
         status_text = self.autostart_manager.get_status_text()
         self.autostart_status_label.setText(status_text)
-        
+
         if self.autostart_manager.is_enabled():
             self.autostart_status_label.setStyleSheet("color: #4CAF50; font-size: 10pt;")
         else:
             self.autostart_status_label.setStyleSheet("color: #666; font-size: 10pt;")
-    
+
     def update_permission_status(self):
         """更新权限状态显示"""
         if not check_startup_permission():

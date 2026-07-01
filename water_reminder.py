@@ -18,6 +18,7 @@ class WaterReminder:
         self.next_reminder_time = None
         self.is_completed_today = False
         self.today_logs = []  # [{"time": "HH:MM", "amount": 250, "type": "喝一杯"}, ...]
+        self._reminder_notified = False
 
     def check_daily_reset(self):
         today = date.today().isoformat()
@@ -27,9 +28,11 @@ class WaterReminder:
             self.is_completed_today = False
             self.next_reminder_time = None
             self.today_logs = []
+            self._reminder_notified = False
 
     def add_water(self, ml):
         self.today_intake += ml
+        self._reminder_notified = False
         if self.today_intake >= self.daily_goal:
             self.is_completed_today = True
             self.next_reminder_time = None
@@ -50,6 +53,7 @@ class WaterReminder:
         if minutes is None:
             minutes = self.snooze_interval
         self.next_reminder_time = datetime.now() + timedelta(minutes=minutes)
+        self._reminder_notified = False
 
     def update_reminder(self):
         if not self.is_enabled:
@@ -65,7 +69,18 @@ class WaterReminder:
         if self.next_reminder_time is None:
             self.next_reminder_time = now + timedelta(minutes=self.reminder_interval)
             return None
-        if now >= self.next_reminder_time:
+
+        diff = (self.next_reminder_time - now).total_seconds()
+
+        # 已过期的提醒不再弹出，直接安排下一次
+        if diff < 0:
+            self._reminder_notified = False
+            self.next_reminder_time = now + timedelta(minutes=self.reminder_interval)
+            return None
+
+        # 剩余10秒内触发提醒（只触发一次）
+        if diff <= 10 and not self._reminder_notified:
+            self._reminder_notified = True
             self.next_reminder_time = now + timedelta(minutes=self.reminder_interval)
             return self._make_reminder_text()
         return None
@@ -99,15 +114,8 @@ class WaterReminder:
         if not self._is_active_hours():
             return "未到开启时段", ""
         if self._is_quiet_hours():
-            end = self._parse_time_today(self.quiet_end)
-            now = datetime.now()
-            diff = (end - now).total_seconds()
-            if diff > 0:
-                mins = int(diff / 60)
-                if mins >= 60:
-                    return "静音中", f"{mins // 60}h{mins % 60}m后结束"
-                return "静音中", f"{mins}m后结束"
-            return "静音中", ""
+            quiet_range = f"{self.quiet_start}-{self.quiet_end}"
+            return "静音时段", quiet_range
 
         now = datetime.now()
         if self.next_reminder_time is None:
@@ -115,7 +123,7 @@ class WaterReminder:
 
         diff = (self.next_reminder_time - now).total_seconds()
         if diff <= 0:
-            return "即将提醒", ""
+            return self.next_reminder_time.strftime("%H:%M"), ""
         mins = int(diff / 60)
         if mins >= 60:
             h = mins // 60
