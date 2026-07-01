@@ -6,6 +6,7 @@ class WaterReminder:
         self.is_enabled = False
         self.cup_size = 250
         self.reminder_interval = 60
+        self.snooze_interval = 30
         self.active_start = "08:00"
         self.active_end = "22:00"
         self.quiet_start = "12:00"
@@ -45,7 +46,9 @@ class WaterReminder:
     def _schedule_next(self):
         self.next_reminder_time = datetime.now() + timedelta(minutes=self.reminder_interval)
 
-    def snooze(self, minutes=30):
+    def snooze(self, minutes=None):
+        if minutes is None:
+            minutes = self.snooze_interval
         self.next_reminder_time = datetime.now() + timedelta(minutes=minutes)
 
     def update_reminder(self):
@@ -127,6 +130,7 @@ class WaterReminder:
             'is_enabled': self.is_enabled,
             'cup_size': self.cup_size,
             'reminder_interval': self.reminder_interval,
+            'snooze_interval': self.snooze_interval,
             'active_start': self.active_start,
             'active_end': self.active_end,
             'quiet_start': self.quiet_start,
@@ -147,6 +151,7 @@ class WaterReminder:
         w.is_enabled = data.get('is_enabled', False)
         w.cup_size = data.get('cup_size', 250)
         w.reminder_interval = data.get('reminder_interval', 60)
+        w.snooze_interval = data.get('snooze_interval', 30)
         w.active_start = data.get('active_start', '08:00')
         w.active_end = data.get('active_end', '22:00')
         w.quiet_start = data.get('quiet_start', '12:00')

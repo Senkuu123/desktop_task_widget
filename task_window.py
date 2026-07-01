@@ -110,7 +110,7 @@ class WaterDisplayWidget(QWidget):
         # Countdown
         mid = QHBoxLayout()
         mid.setContentsMargins(0, 2, 0, 2)
-        mid.setSpacing(4)
+        mid.setSpacing(8)
         self.reminder_time_label = QLabel("--:--")
         self.reminder_time_label.setStyleSheet("color: rgba(255,255,255,0.9); font-size: 16pt; font-weight: 700;")
         self.reminder_time_label.setAlignment(Qt.AlignVCenter | Qt.AlignLeft)
@@ -157,7 +157,7 @@ class WaterDisplayWidget(QWidget):
         self._drink_half_btn, self._drink_half_lbl = make_btn(
             "", "喝半杯", f"+{self.water.cup_size // 2}ml", self.drink_half)
         self._snooze_btn, self._snooze_lbl = make_btn(
-            "⏰", "稍后提醒", "30分钟后", self.snooze)
+            "⏰", "稍后提醒", f"{self.water.snooze_interval}分钟后", self.snooze)
 
         root.addWidget(self._btn_row_widget)
 
@@ -212,6 +212,7 @@ class WaterDisplayWidget(QWidget):
     def _update_btn_labels(self):
         self._drink_full_lbl.setText(f"🥛 喝一杯\n+{self.water.cup_size}ml")
         self._drink_half_lbl.setText(f"喝半杯\n+{self.water.cup_size // 2}ml")
+        self._snooze_lbl.setText(f"⏰ 稍后提醒\n{self.water.snooze_interval}分钟后")
 
     def update_countdown(self):
         self.water.check_daily_reset()
@@ -224,8 +225,7 @@ class WaterDisplayWidget(QWidget):
             diff = (self.water.next_reminder_time - datetime.now()).total_seconds()
             if diff > 0:
                 mins = int(diff // 60)
-                secs = int(diff % 60)
-                self.countdown_label.setText(f"还剩 {mins:02d}:{secs:02d}")
+                self.countdown_label.setText(f"还剩 {mins}分钟")
             else:
                 self.countdown_label.setText("即将提醒")
         else:
@@ -265,6 +265,7 @@ class WaterDisplayWidget(QWidget):
             self.water.is_enabled = dlg.get_is_enabled()
             self.water.cup_size = dlg.get_cup_size()
             self.water.reminder_interval = dlg.get_interval()
+            self.water.snooze_interval = dlg.get_snooze_interval()
             self.water.active_start, self.water.active_end = dlg.get_active_range()
             self.water.quiet_start, self.water.quiet_end = dlg.get_quiet_range()
             self.water.daily_goal = dlg.get_goal()
@@ -330,7 +331,7 @@ class _WaterSettingsDialog(QDialog):
         self._reset_done = False
         self.setWindowTitle("饮水设置")
         self.setWindowModality(Qt.ApplicationModal)
-        self.setFixedSize(350, 430)
+        self.setFixedSize(350, 470)
         self.setStyleSheet("""
             QDialog {
                 background-color: #f0f0f0;
@@ -411,6 +412,13 @@ class _WaterSettingsDialog(QDialog):
         self.interval_spin.setSuffix(" 分钟")
         self.interval_spin.setMinimumHeight(35)
         add_row("提醒间隔:", self.interval_spin)
+
+        self.snooze_spin = QSpinBox()
+        self.snooze_spin.setRange(5, 120)
+        self.snooze_spin.setValue(water.snooze_interval)
+        self.snooze_spin.setSuffix(" 分钟")
+        self.snooze_spin.setMinimumHeight(35)
+        add_row("稍后提醒:", self.snooze_spin)
 
         self.active_start = QTimeEdit()
         self.active_start.setDisplayFormat("HH:mm")
@@ -495,6 +503,9 @@ class _WaterSettingsDialog(QDialog):
 
     def get_interval(self):
         return self.interval_spin.value()
+
+    def get_snooze_interval(self):
+        return self.snooze_spin.value()
 
     def get_active_range(self):
         return self.active_start.time().toString("HH:mm"), self.active_end.time().toString("HH:mm")
@@ -1073,7 +1084,7 @@ class TransparentTaskWindow(QWidget):
         self.last_cursor_pos = None
         self.last_cursor_shape = Qt.ArrowCursor
         
-        self.setMinimumSize(300, 300)
+        self.setMinimumSize(300, 400)
         self.setMaximumSize(800, 1200)
         
         # 先设置基本窗口属性，再初始化UI
@@ -1161,7 +1172,7 @@ class TransparentTaskWindow(QWidget):
         # 饮水小组件（习惯页顶部固定显示）
         self.water_widget = WaterDisplayWidget(self.water_reminder, self)
         self.water_widget.setVisible(False)
-        list_layout.addWidget(self.water_widget)
+        list_layout.addWidget(self.water_widget, 0)
 
         self.task_list_widget = QListWidget()
         # 为列表控件设置唯一ID，防止样式继承冲突
@@ -1176,7 +1187,7 @@ class TransparentTaskWindow(QWidget):
         # 设置列表控件的边距，确保与任务项边距一致
         self.task_list_widget.setContentsMargins(0, 0, 0, 0)
         
-        list_layout.addWidget(self.task_list_widget)
+        list_layout.addWidget(self.task_list_widget, 1)
         
         main_layout.addWidget(self.drag_area)
         main_layout.addWidget(self.list_container)
