@@ -310,7 +310,6 @@ def main():
     run_pyinstaller()
     
     print("\n" + "=" * 50)
-    input("按Enter键退出...")
 
 if __name__ == '__main__':
     main()
