@@ -24,14 +24,14 @@ class AddHabitDialog(QDialog):
     def initUI(self):
         self.setWindowTitle("编辑习惯" if self.habit else "添加习惯")
         self.setWindowModality(Qt.ApplicationModal)
-        self.setFixedSize(380, 370 if self.habit else 320)
+        self.setFixedSize(360, 340 if self.habit else 290)
 
         self.setStyleSheet("""
             QDialog {
                 background-color: #f0f0f0;
                 font-family: 'Microsoft YaHei', sans-serif;
             }
-            QLabel {
+            QLabel#formLabel {
                 font-size: 12pt;
                 color: #333;
                 font-weight: bold;
@@ -48,7 +48,7 @@ class AddHabitDialog(QDialog):
             }
             QPushButton {
                 font-size: 11pt;
-                padding: 8px 16px;
+                padding: 6px 14px;
                 border: none;
                 border-radius: 5px;
                 font-weight: bold;
@@ -84,47 +84,54 @@ class AddHabitDialog(QDialog):
         """)
 
         main_layout = QVBoxLayout()
-        main_layout.setSpacing(15)
-        main_layout.setContentsMargins(20, 20, 20, 20)
+        main_layout.setSpacing(10)
+        main_layout.setContentsMargins(16, 12, 16, 12)
 
         form_layout = QFormLayout()
-        form_layout.setSpacing(10)
+        form_layout.setSpacing(6)
+        form_layout.setContentsMargins(0, 0, 0, 0)
 
         self.content_edit = QLineEdit()
-        self.content_edit.setPlaceholderText("例：跑步30分钟、背单词、喝8杯水...")
-        self.content_edit.setMinimumHeight(35)
+        self.content_edit.setPlaceholderText("例：跑步30分钟、背单词...")
+        self.content_edit.setMinimumHeight(32)
         if self.habit:
             self.content_edit.setText(self.habit.content)
-        form_layout.addRow("习惯内容:", self.content_edit)
+
+        label = QLabel("习惯内容:")
+        label.setObjectName("formLabel")
+        form_layout.addRow(label, self.content_edit)
 
         self.time_edit = QTimeEdit()
         self.time_edit.setDisplayFormat("HH:mm")
-        self.time_edit.setMinimumHeight(35)
+        self.time_edit.setMinimumHeight(32)
         if self.habit:
             h, m = self.habit.time.split(":")
             self.time_edit.setTime(QTime(int(h), int(m)))
         else:
             self.time_edit.setTime(QTime(8, 0))
-        form_layout.addRow("提醒时间:", self.time_edit)
 
-        freq_label = QLabel("频率:")
-        freq_label.setStyleSheet("font-size: 12pt; color: #333; font-weight: bold;")
+        t_label = QLabel("提醒时间:")
+        t_label.setObjectName("formLabel")
+        form_layout.addRow(t_label, self.time_edit)
+
+        f_label = QLabel("频率:")
+        f_label.setObjectName("formLabel")
         self.freq_combo = QComboBox()
         self.freq_combo.addItems(self.MODE_LABELS)
         self.freq_combo.currentIndexChanged.connect(self._on_mode_changed)
-        form_layout.addRow(freq_label, self.freq_combo)
+        form_layout.addRow(f_label, self.freq_combo)
 
         self.mode_stack = QStackedWidget()
         self._build_daily_page()
         self._build_weekly_page()
         self._build_interval_page()
-        form_layout.addRow(self.mode_stack)
+        form_layout.addRow("", self.mode_stack)
 
         main_layout.addLayout(form_layout)
+        main_layout.addStretch()
 
-        # Bottom button row: [删除] [归档] ... [取消] [确定]
         button_layout = QHBoxLayout()
-        button_layout.setSpacing(10)
+        button_layout.setSpacing(8)
 
         if self.habit:
             self.delete_button = QPushButton("删除")
@@ -159,40 +166,34 @@ class AddHabitDialog(QDialog):
         else:
             self._on_mode_changed(0)
 
-    def _center_layout(self, layout):
-        """Wrap a layout with stretches on both sides for centering."""
-        wrapper = QHBoxLayout()
-        wrapper.addStretch()
-        wrapper.addLayout(layout)
-        wrapper.addStretch()
-        return wrapper
-
     def _build_daily_page(self):
         page = QWidget()
-        outer = QVBoxLayout(page)
-        outer.setContentsMargins(0, 0, 0, 0)
+        layout = QVBoxLayout(page)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
 
         day_names = ["一", "二", "三", "四", "五", "六", "日"]
         self.weekday_cbs = []
-        inner = QHBoxLayout()
-        inner.setSpacing(2)
+        row = QHBoxLayout()
+        row.setSpacing(2)
         for i, name in enumerate(day_names):
             cb = QCheckBox(name)
             cb.setChecked(i in [0, 1, 2, 3, 4])
-            cb.setMaximumWidth(36)
             cb.setStyleSheet("font-size: 10pt; color: #333; font-weight: normal;")
             self.weekday_cbs.append(cb)
-            inner.addWidget(cb)
-        outer.addLayout(self._center_layout(inner))
+            row.addWidget(cb)
+        row.addStretch()
+        layout.addLayout(row)
         self.mode_stack.addWidget(page)
 
     def _build_weekly_page(self):
         page = QWidget()
-        outer = QVBoxLayout(page)
-        outer.setContentsMargins(0, 0, 0, 0)
+        layout = QVBoxLayout(page)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
 
-        inner = QHBoxLayout()
-        inner.setSpacing(6)
+        row = QHBoxLayout()
+        row.setSpacing(6)
         label = QLabel("每周完成")
         label.setStyleSheet("font-size: 11pt; color: #555; font-weight: normal;")
         self.weekly_spin = QSpinBox()
@@ -201,19 +202,21 @@ class AddHabitDialog(QDialog):
         self.weekly_spin.setFixedWidth(50)
         suffix = QLabel("次")
         suffix.setStyleSheet("font-size: 11pt; color: #555; font-weight: normal;")
-        inner.addWidget(label)
-        inner.addWidget(self.weekly_spin)
-        inner.addWidget(suffix)
-        outer.addLayout(self._center_layout(inner))
+        row.addWidget(label)
+        row.addWidget(self.weekly_spin)
+        row.addWidget(suffix)
+        row.addStretch()
+        layout.addLayout(row)
         self.mode_stack.addWidget(page)
 
     def _build_interval_page(self):
         page = QWidget()
-        outer = QVBoxLayout(page)
-        outer.setContentsMargins(0, 0, 0, 0)
+        layout = QVBoxLayout(page)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
 
-        inner = QHBoxLayout()
-        inner.setSpacing(6)
+        row = QHBoxLayout()
+        row.setSpacing(6)
         label = QLabel("每")
         label.setStyleSheet("font-size: 11pt; color: #555; font-weight: normal;")
         self.interval_spin = QSpinBox()
@@ -222,10 +225,11 @@ class AddHabitDialog(QDialog):
         self.interval_spin.setFixedWidth(50)
         suffix = QLabel("天")
         suffix.setStyleSheet("font-size: 11pt; color: #555; font-weight: normal;")
-        inner.addWidget(label)
-        inner.addWidget(self.interval_spin)
-        inner.addWidget(suffix)
-        outer.addLayout(self._center_layout(inner))
+        row.addWidget(label)
+        row.addWidget(self.interval_spin)
+        row.addWidget(suffix)
+        row.addStretch()
+        layout.addLayout(row)
         self.mode_stack.addWidget(page)
 
     def _on_mode_changed(self, index):
