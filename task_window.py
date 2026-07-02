@@ -609,7 +609,7 @@ class TaskListWidgetItem(QWidget):
         self.label.setAlignment(Qt.AlignVCenter | Qt.AlignLeft)
         
         # 设置标签的尺寸策略，允许水平扩展以支持滚动
-        self.label.setSizePolicy(QSizePolicy.MinimumExpanding, QSizePolicy.Preferred)
+        self.label.setSizePolicy(QSizePolicy.MinimumExpanding, QSizePolicy.Fixed)
         # 移除文本选择功能，让双击事件能传递到父组件
         self.label.setTextInteractionFlags(Qt.NoTextInteraction)
         
@@ -763,7 +763,6 @@ class TaskListWidgetItem(QWidget):
             self.label.setMinimumWidth(120)
             self.label.setMaximumWidth(16777215)
             self.updateGeometry()
-            self.label.adjustSize()
     
     def enterEvent(self, event):
         """鼠标进入事件"""
