@@ -1,6 +1,6 @@
 import sys
 import ctypes
-from datetime import datetime, timedelta
+from datetime import datetime, date, timedelta
 from PyQt5.QtWidgets import (QApplication, QWidget, QVBoxLayout, QHBoxLayout,
                              QListWidget, QListWidgetItem, QPushButton, QCheckBox,
                              QLabel, QDialog, QSlider, QGroupBox, QSizePolicy, QMessageBox,
@@ -11,7 +11,9 @@ from task import Task
 from habit import Habit
 from storage import (save_tasks_to_json, load_tasks_from_json, archive_task,
                      save_settings, load_settings, save_habits_to_json, load_habits_from_json,
-                     save_water_reminder, load_water_reminder)
+                     save_water_reminder, load_water_reminder,
+                     save_water_log, load_water_log,
+                     save_habit_log, load_habit_log)
 from add_task_dialog import AddTaskDialog
 from edit_task_dialog import EditTaskDialog
 from add_habit_dialog import AddHabitDialog
@@ -215,7 +217,17 @@ class WaterDisplayWidget(QWidget):
         self._snooze_lbl.setText(f"⏰ 稍后提醒\n{self.water.snooze_interval}分钟后")
 
     def update_countdown(self):
-        self.water.check_daily_reset()
+        reset_result = self.water.check_daily_reset()
+        if reset_result:
+            old_date, old_intake, old_logs, old_completed = reset_result
+            log = load_water_log()
+            log[old_date] = {
+                "total_intake": old_intake,
+                "drink_count": len(old_logs),
+                "logs": old_logs,
+                "goal_completed": old_completed,
+            }
+            save_water_log(log)
         time_str, sub_text = self.water.get_next_reminder_display()
         self.reminder_time_label.setText(time_str)
         if (self.water.next_reminder_time and self.water.is_enabled
@@ -246,11 +258,24 @@ class WaterDisplayWidget(QWidget):
     def _on_drink(self):
         self._update_all()
         self._rebuild_log()
+        self._sync_water_log()
         save_water_reminder(self.water)
         if self.water.is_completed_today:
             self.parent_window.show_deadline_notification(
                 "今日饮水目标", 0,
                 msg_override=f"真棒！今日已喝够{self.water.daily_goal}ml！")
+
+    def _sync_water_log(self):
+        """将当前饮水状态写入water_log.json按天分区"""
+        log = load_water_log()
+        today = date.today().isoformat()
+        log[today] = {
+            "total_intake": self.water.today_intake,
+            "drink_count": len(self.water.today_logs),
+            "logs": list(self.water.today_logs),
+            "goal_completed": self.water.is_completed_today,
+        }
+        save_water_log(log)
 
     def snooze(self):
         self.water.snooze(30)
@@ -487,7 +512,7 @@ class TaskListWidgetItem(QWidget):
     """自定义任务列表项，支持任务和习惯两种模式"""
 
     task_status_changed = pyqtSignal(int, bool)  # task_id, is_done
-    habit_status_changed = pyqtSignal(int, bool)  # habit_id, is_done_today
+    habit_status_changed = pyqtSignal(int, bool, object)  # habit_id, is_done_today, popup_msg
 
     def __init__(self, item, parent=None, mode='task'):
         super().__init__(parent)
@@ -655,7 +680,7 @@ class TaskListWidgetItem(QWidget):
 
     def _update_habit_text_style(self):
         """习惯模式的文字样式"""
-        text = f"{self.habit.content} ({self.habit.time})"
+        text = f"{self.habit.content} ({self.habit.time} {self.habit.get_freq_label()})"
 
         parent = self._get_parent_window()
         font_size = getattr(parent, 'current_font_size', 11)
@@ -699,13 +724,13 @@ class TaskListWidgetItem(QWidget):
         is_done = (state == Qt.Checked)
 
         if self.mode == 'habit':
-            self.habit.is_done_today = is_done
+            popup_msg = None
             if is_done:
-                self.habit.mark_done_today()
+                popup_msg = self.habit.record_completion()
             else:
-                self.habit.mark_undone_today()
+                self.habit.undo_completion()
             self.update_text_style()
-            self.habit_status_changed.emit(self.habit.id, is_done)
+            self.habit_status_changed.emit(self.habit.id, is_done, popup_msg)
             return
 
         # 如果是从未完成变为完成，记录完成时间
@@ -1631,8 +1656,8 @@ class TransparentTaskWindow(QWidget):
         self.resizing = False
         self.resize_direction = None
 
-        # 贴边隐藏：仅非置顶状态、拖动结束后触发
-        if was_dragging and not self.pin_button.isChecked():
+        # 贴边隐藏：拖动结束后触发
+        if was_dragging:
             edge = self._check_near_edge()
             if edge:
                 # 吸附到屏幕边缘
@@ -1846,17 +1871,6 @@ class TransparentTaskWindow(QWidget):
         """切换窗口置顶状态"""
         is_topmost = self.pin_button.isChecked()
 
-        # 置顶时先恢复贴边隐藏，并禁用自动再隐藏
-        if is_topmost and self.edge_hidden:
-            self._should_rehide = False
-            self._stop_rehide_timer()
-            self._restore_from_edge()
-        if is_topmost:
-            self._should_rehide = False
-            self._pending_hide = False
-            self._stop_rehide_timer()
-            self._stop_pending_hide_timer()
-
         try:
             current_flags = self.windowFlags()
 
@@ -1985,12 +1999,19 @@ class TransparentTaskWindow(QWidget):
     def show_add_habit_dialog(self):
         dialog = AddHabitDialog(parent=self)
         if dialog.exec_() == QDialog.Accepted:
-            content, time_str, _ = dialog.get_habit_data()
-            if content:
-                self.add_new_habit(content, time_str)
+            data = dialog.get_habit_data()
+            if data.content:
+                self.add_new_habit(data)
 
-    def add_new_habit(self, content, time_str):
-        habit = Habit(content, time_str)
+    def add_new_habit(self, data):
+        habit = Habit(
+            content=data.content,
+            time=data.time_str,
+            freq_mode=data.freq_mode,
+            weekdays=data.weekdays,
+            weekly_target=data.weekly_target,
+            interval_days=data.interval_days,
+        )
         self.habits.append(habit)
         self.save_habits()
         self.refresh_task_display()
@@ -1998,16 +2019,64 @@ class TransparentTaskWindow(QWidget):
     def save_habits(self):
         save_habits_to_json(self.habits)
 
-    def refresh_habit_display(self):
+    def _sync_habit_log(self, record_type="status"):
+        log = load_habit_log()
+        today = date.today().isoformat()
+        if today not in log:
+            log[today] = {}
         for h in self.habits:
+            log[today][str(h.id)] = {
+                "content": h.content,
+                "is_done": h.is_done_today,
+                "is_archived": h.is_archived,
+                "time": h.time,
+                "freq_mode": h.freq_mode,
+                "weekly_completed": h.weekly_completed,
+                "current_streak": h.current_streak,
+                "record_type": record_type,
+            }
+        save_habit_log(log)
+
+    def _sync_habit_log_for_date(self, log_date):
+        log = load_habit_log()
+        if log_date not in log:
+            log[log_date] = {}
+        for h in self.habits:
+            log[log_date][str(h.id)] = {
+                "content": h.content,
+                "is_done": h.is_done_today,
+                "is_archived": h.is_archived,
+                "time": h.time,
+                "freq_mode": h.freq_mode,
+                "weekly_completed": h.weekly_completed,
+                "current_streak": h.current_streak,
+                "record_type": "archive",
+            }
+        save_habit_log(log)
+
+    def refresh_habit_display(self):
+        # 检查周切和日切，归档昨天的习惯日志
+        today = date.today().isoformat()
+        for h in self.habits:
+            if h.is_done_today and h.done_date and h.done_date != today:
+                old_date = h.done_date
+                old_done = h.is_done_today
+                h.check_daily_reset()
+                # 用重置前的状态归档
+                h.is_done_today = old_done
+                self._sync_habit_log_for_date(old_date)
+                h.is_done_today = False
+        for h in self.habits:
+            h.check_weekly_reset()
             h.check_daily_reset()
 
         self.task_list_widget.clear()
         self.task_widgets.clear()
 
         habits_sorted = sorted(self.habits, key=lambda h: h.time)
-        done_habits = [h for h in habits_sorted if h.is_done_today]
-        undone_habits = [h for h in habits_sorted if not h.is_done_today]
+        active_habits = [h for h in habits_sorted if not h.is_archived]
+        done_habits = [h for h in active_habits if h.is_done_today]
+        undone_habits = [h for h in active_habits if not h.is_done_today]
 
         for habit in undone_habits + done_habits:
             widget = TaskListWidgetItem(habit, self, mode='habit')
@@ -2015,22 +2084,17 @@ class TransparentTaskWindow(QWidget):
             widget.habit_status_changed.connect(self.on_habit_status_changed)
 
             item = QListWidgetItem(self.task_list_widget)
-            item.setSizeHint(widget.sizeHint())
             item.setFlags(item.flags() & ~Qt.ItemIsSelectable)
             self.task_list_widget.setItemWidget(item, widget)
             widget.update_text_style()
+            item.setSizeHint(widget.sizeHint())
 
-    def on_habit_status_changed(self, habit_id, is_done):
-        for h in self.habits:
-            if h.id == habit_id:
-                h.is_done_today = is_done
-                if is_done:
-                    h.mark_done_today()
-                else:
-                    h.mark_undone_today()
-                break
+    def on_habit_status_changed(self, habit_id, is_done, popup_msg=None):
         self.save_habits()
+        self._sync_habit_log()
         self.refresh_task_display()
+        if popup_msg:
+            self.show_deadline_notification("习惯养成", 0, msg_override=popup_msg)
 
     def on_habit_double_clicked(self, item):
         widget = self.task_list_widget.itemWidget(item)
@@ -2040,13 +2104,20 @@ class TransparentTaskWindow(QWidget):
         dialog = AddHabitDialog(habit=widget.habit, parent=self)
         dialog.exec_()
 
-        content, time_str, to_delete = dialog.get_habit_data()
+        data = dialog.get_habit_data()
 
-        if to_delete:
+        if data.to_delete:
             self.habits = [h for h in self.habits if h.id != widget.habit.id]
-        elif content:
-            widget.habit.content = content
-            widget.habit.time = time_str
+        elif data.to_archive:
+            widget.habit.archive()
+            self._sync_habit_log(record_type="archive")
+        elif data.content:
+            widget.habit.content = data.content
+            widget.habit.time = data.time_str
+            widget.habit.freq_mode = data.freq_mode
+            widget.habit.weekdays = data.weekdays
+            widget.habit.weekly_target = data.weekly_target
+            widget.habit.interval_days = data.interval_days
 
         self.save_habits()
         self.refresh_task_display()
@@ -2072,9 +2143,13 @@ class TransparentTaskWindow(QWidget):
             except Exception:
                 pass
 
-        # 检查习惯（如果设置了时间，且当前未完成）
+        # 检查习惯（设置了时间、当前未完成、今天活跃、未归档）
         for habit in all_habits:
             if habit.is_done_today:
+                continue
+            if habit.is_archived:
+                continue
+            if not habit.is_active_today():
                 continue
             try:
                 h, m = habit.time.split(":")

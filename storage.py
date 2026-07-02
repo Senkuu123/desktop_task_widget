@@ -39,6 +39,8 @@ TASKS_FILE = get_tasks_file_path()
 SETTINGS_FILE = get_settings_file_path()
 HABITS_FILE = os.path.join(get_data_dir(), "habits.json")
 WATER_FILE = os.path.join(get_data_dir(), "water.json")
+WATER_LOG_FILE = os.path.join(get_data_dir(), "water_log.json")
+HABIT_LOG_FILE = os.path.join(get_data_dir(), "habit_log.json")
 
 
 def save_tasks_to_json(tasks_list: List[Task]) -> bool:
@@ -292,6 +294,48 @@ def load_water_reminder() -> WaterReminder:
     except Exception as e:
         print(f"加载饮水设置失败: {e}")
         return WaterReminder()
+
+
+def save_water_log(log_data: dict) -> bool:
+    try:
+        with open(WATER_LOG_FILE, 'w', encoding='utf-8') as f:
+            json.dump(log_data, f, ensure_ascii=False, indent=2)
+        return True
+    except Exception as e:
+        print(f"保存饮水日志失败: {e}")
+        return False
+
+
+def load_water_log() -> dict:
+    try:
+        if not os.path.exists(WATER_LOG_FILE):
+            return {}
+        with open(WATER_LOG_FILE, 'r', encoding='utf-8') as f:
+            return json.load(f)
+    except Exception as e:
+        print(f"加载饮水日志失败: {e}")
+        return {}
+
+
+def save_habit_log(log_data: dict) -> bool:
+    try:
+        with open(HABIT_LOG_FILE, 'w', encoding='utf-8') as f:
+            json.dump(log_data, f, ensure_ascii=False, indent=2)
+        return True
+    except Exception as e:
+        print(f"保存习惯日志失败: {e}")
+        return False
+
+
+def load_habit_log() -> dict:
+    try:
+        if not os.path.exists(HABIT_LOG_FILE):
+            return {}
+        with open(HABIT_LOG_FILE, 'r', encoding='utf-8') as f:
+            return json.load(f)
+    except Exception as e:
+        print(f"加载习惯日志失败: {e}")
+        return {}
 
 
 def save_settings(settings: dict) -> bool:

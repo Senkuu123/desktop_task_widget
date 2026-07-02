@@ -23,12 +23,18 @@ class WaterReminder:
     def check_daily_reset(self):
         today = date.today().isoformat()
         if self.today_date != today:
+            old_date = self.today_date
+            old_intake = self.today_intake
+            old_logs = list(self.today_logs)
+            old_completed = self.is_completed_today
             self.today_date = today
             self.today_intake = 0
             self.is_completed_today = False
             self.next_reminder_time = None
             self.today_logs = []
             self._reminder_notified = False
+            return (old_date, old_intake, old_logs, old_completed)
+        return None
 
     def add_water(self, ml):
         self.today_intake += ml
