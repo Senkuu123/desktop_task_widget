@@ -180,6 +180,7 @@ class WaterDisplayWidget(QWidget):
             QScrollBar:vertical { background: transparent; width: 8px; margin: 0; border-radius: 4px; }
             QScrollBar::handle:vertical { background: rgba(255,255,255,0); border-radius: 4px; min-height: 20px; }
             QScrollBar::handle:vertical:hover { background: rgba(120, 120, 120, 220); }
+            QScrollBar::handle:vertical:pressed { background: rgba(140, 140, 140, 255); }
             QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0; }
             QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical { background: none; }
         """)
