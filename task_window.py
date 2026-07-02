@@ -173,12 +173,12 @@ class WaterDisplayWidget(QWidget):
         self.log_scroll.setWidgetResizable(True)
         self.log_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self.log_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
-        self.log_scroll.setFixedHeight(108)
+        self.log_scroll.setFixedHeight(96)
         self.log_scroll.setStyleSheet("""
             QScrollArea { background: transparent; border: none; border-radius: 6px; }
             QScrollArea > QWidget > QWidget { background: transparent; }
             QScrollBar:vertical { background: transparent; width: 8px; margin: 0; border-radius: 4px; }
-            QScrollBar::handle:vertical { background: rgba(255,255,255,0.18); border-radius: 4px; min-height: 20px; }
+            QScrollBar::handle:vertical { background: rgba(255,255,255,0); border-radius: 4px; min-height: 20px; }
             QScrollBar::handle:vertical:hover { background: rgba(120, 120, 120, 220); }
             QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0; }
             QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical { background: none; }
@@ -325,6 +325,7 @@ class WaterDisplayWidget(QWidget):
             for entry in reversed(logs):
                 row = QHBoxLayout()
                 row.setContentsMargins(0, 5, 0, 5)
+                row.setSpacing(0)
                 dot = QLabel("·")
                 dot.setFixedWidth(8)
                 dot.setStyleSheet("color: rgba(255,255,255,0.35); font-size: 10pt;")
@@ -343,9 +344,11 @@ class WaterDisplayWidget(QWidget):
                 row.addStretch()
                 container = QWidget()
                 container.setLayout(row)
-                container.setStyleSheet("border-bottom: 1px solid rgba(255,255,255,0.06);")
                 layout.addWidget(container)
-        layout.addStretch()
+                sep = QLabel()
+                sep.setFixedHeight(1)
+                sep.setStyleSheet("background: rgba(255,255,255,0.08);")
+                layout.addWidget(sep)
 
 
 class _WaterSettingsDialog(QDialog):
@@ -1289,14 +1292,14 @@ class TransparentTaskWindow(QWidget):
         scrollbar_style = f"""
             QScrollBar:vertical {{
                 background: transparent;
-                width: 12px;
+                width: 8px;
                 margin: 0px;
-                border-radius: 6px;
+                border-radius: 4px;
             }}
             QScrollBar::handle:vertical {{
                 background: rgba(100, 100, 100, 0); /* 初始完全透明 */
-                border-radius: 6px;
-                min-height: 30px;
+                border-radius: 4px;
+                min-height: 20px;
             }}
             QScrollBar::handle:vertical:hover {{
                 background: rgba(120, 120, 120, 220); /* 悬停时显示 */
@@ -1311,17 +1314,17 @@ class TransparentTaskWindow(QWidget):
             QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {{
                 background: none;
             }}
-            
+
             QScrollBar:horizontal {{
                 background: transparent;
-                height: 12px;
+                height: 8px;
                 margin: 0px;
-                border-radius: 6px;
+                border-radius: 4px;
             }}
             QScrollBar::handle:horizontal {{
                 background: rgba(100, 100, 100, 0); /* 初始完全透明 */
-                border-radius: 6px;
-                min-width: 30px;
+                border-radius: 4px;
+                min-width: 20px;
             }}
             QScrollBar::handle:horizontal:hover {{
                 background: rgba(120, 120, 120, 220); /* 悬停时显示 */
