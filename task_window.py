@@ -173,7 +173,7 @@ class WaterDisplayWidget(QWidget):
         self.log_scroll.setWidgetResizable(True)
         self.log_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self.log_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
-        self.log_scroll.setFixedHeight(200)
+        self.log_scroll.setFixedHeight(108)
         self.log_scroll.setStyleSheet("""
             QScrollArea { background: transparent; border: none; border-radius: 6px; }
             QScrollArea > QWidget > QWidget { background: transparent; }
@@ -755,16 +755,9 @@ class TaskListWidgetItem(QWidget):
     def resizeEvent(self, event):
         super().resizeEvent(event)
         if hasattr(self, 'label'):
-            # 重新计算可用宽度：父窗口宽度 - 复选框容器宽度 - 布局间距 - 边距
-            # 复选框容器固定宽度25px + 布局间距8px + 左右边距8px = 41px
-            available_width = self.width() - 41
-            # 设置最小宽度，但不限制最大宽度以支持水平滚动
-            self.label.setMinimumWidth(max(available_width, 120))
-            # 允许标签根据需要扩展宽度
-            self.label.setMaximumWidth(16777215)  # Qt最大宽度值
-            # 立即更新布局，避免延迟导致的抖动
+            self.label.setMinimumWidth(120)
+            self.label.setMaximumWidth(16777215)
             self.updateGeometry()
-            # 强制标签重新计算布局
             self.label.adjustSize()
     
     def enterEvent(self, event):
@@ -1802,15 +1795,11 @@ class TransparentTaskWindow(QWidget):
     def update_task_item_widths(self):
         """更新任务项宽度"""
         if self.task_list_widget.count() > 0:
-            list_width = self.task_list_widget.viewport().width()
-            # 统一宽度计算：容器宽度 - 复选框容器宽度 - 布局间距 - 边距
-            available_width = list_width - 41
-            
             for i in range(self.task_list_widget.count()):
                 item = self.task_list_widget.item(i)
                 widget = self.task_list_widget.itemWidget(item)
                 if widget and hasattr(widget, 'label'):
-                    widget.label.setMinimumWidth(max(available_width, 120))
+                    widget.label.setMinimumWidth(120)
                     widget.label.setMaximumWidth(16777215)
                     widget.updateGeometry()
                     item.setSizeHint(widget.sizeHint())
