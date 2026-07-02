@@ -344,11 +344,13 @@ class WaterDisplayWidget(QWidget):
                 row.addStretch()
                 container = QWidget()
                 container.setLayout(row)
+                container.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Fixed)
                 layout.addWidget(container)
                 sep = QLabel()
                 sep.setFixedHeight(1)
                 sep.setStyleSheet("background: rgba(255,255,255,0.08);")
                 layout.addWidget(sep)
+        layout.addStretch()
 
 
 class _WaterSettingsDialog(QDialog):
