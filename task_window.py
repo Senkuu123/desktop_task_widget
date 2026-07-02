@@ -1481,14 +1481,12 @@ class TransparentTaskWindow(QWidget):
             task_widget = TaskListWidgetItem(task, self)
             self.task_widgets[task.id] = task_widget
             task_widget.task_status_changed.connect(self.on_task_status_changed)
-            
+
             item = QListWidgetItem(self.task_list_widget)
-            # 设置固定的项高度，避免滚动时高度变化
-            item.setSizeHint(task_widget.sizeHint())
-            # 禁用项的选择状态，避免影响显示
             item.setFlags(item.flags() & ~Qt.ItemIsSelectable)
             self.task_list_widget.setItemWidget(item, task_widget)
             task_widget.update_text_style()
+            item.setSizeHint(task_widget.sizeHint())
 
     def on_task_status_changed(self, task_id, is_done):
         """任务状态改变处理"""
@@ -1809,12 +1807,13 @@ class TransparentTaskWindow(QWidget):
             available_width = list_width - 41
             
             for i in range(self.task_list_widget.count()):
-                widget = self.task_list_widget.itemWidget(self.task_list_widget.item(i))
+                item = self.task_list_widget.item(i)
+                widget = self.task_list_widget.itemWidget(item)
                 if widget and hasattr(widget, 'label'):
-                    # 设置最小宽度，允许标签根据需要扩展以支持水平滚动
                     widget.label.setMinimumWidth(max(available_width, 120))
-                    widget.label.setMaximumWidth(16777215)  # Qt最大宽度值
+                    widget.label.setMaximumWidth(16777215)
                     widget.updateGeometry()
+                    item.setSizeHint(widget.sizeHint())
             
             self.task_list_widget.update()
     

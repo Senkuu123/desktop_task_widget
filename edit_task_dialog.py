@@ -22,8 +22,8 @@ class EditTaskDialog(QDialog):
         # 设置对话框属性
         self.setWindowTitle("编辑任务")
         self.setWindowModality(Qt.ApplicationModal)  # 模态对话框
-        self.setFixedSize(400, 300)
-        
+        self.setFixedSize(340, 240)
+
         # 设置样式
         self.setStyleSheet("""
             QDialog {
@@ -47,7 +47,7 @@ class EditTaskDialog(QDialog):
             }
             QPushButton {
                 font-size: 11pt;
-                padding: 8px 16px;
+                padding: 6px 14px;
                 border: none;
                 border-radius: 5px;
                 font-weight: bold;
@@ -74,28 +74,28 @@ class EditTaskDialog(QDialog):
                 background-color: #6B7280;
             }
             QPushButton#archiveButton {
-                background-color: #F59E0B;
+                background-color: #F97316;
                 color: white;
             }
             QPushButton#archiveButton:hover {
-                background-color: #D97706;
+                background-color: #ea580c;
             }
         """)
-        
+
         # 创建主布局
         main_layout = QVBoxLayout()
-        main_layout.setSpacing(15)
-        main_layout.setContentsMargins(20, 20, 20, 20)
-        
+        main_layout.setSpacing(10)
+        main_layout.setContentsMargins(16, 12, 16, 12)
+
         # 创建表单布局
         form_layout = QFormLayout()
-        form_layout.setSpacing(10)
+        form_layout.setSpacing(6)
         
         # 1. 任务内容输入框
         self.content_edit = QLineEdit()
         self.content_edit.setText(self.task.content)
         self.content_edit.setPlaceholderText("请输入任务内容...")
-        self.content_edit.setMinimumHeight(35)
+        self.content_edit.setMinimumHeight(32)
         form_layout.addRow("任务内容:", self.content_edit)
         
         # 2. 截止时间选择器
@@ -103,7 +103,7 @@ class EditTaskDialog(QDialog):
         deadline_datetime = self._parse_deadline(self.task.deadline)
         self.deadline_edit.setDateTime(deadline_datetime)
         self.deadline_edit.setDisplayFormat("yyyy-MM-dd hh:mm")
-        self.deadline_edit.setMinimumHeight(35)
+        self.deadline_edit.setMinimumHeight(32)
         self.deadline_edit.setCalendarPopup(True)  # 显示日历弹窗
         form_layout.addRow("截止时间:", self.deadline_edit)
         
@@ -118,7 +118,7 @@ class EditTaskDialog(QDialog):
         priority_map = {1: 0, 2: 1, 3: 2}
         current_priority = priority_map.get(original_priority, 0)
         self.priority_combo.setCurrentIndex(current_priority)
-        self.priority_combo.setMinimumHeight(35)
+        self.priority_combo.setMinimumHeight(32)
         form_layout.addRow("优先级:", self.priority_combo)
         
         # 添加表单布局到主布局
@@ -126,7 +126,8 @@ class EditTaskDialog(QDialog):
         
         # 创建按钮布局
         button_layout = QHBoxLayout()
-        
+        button_layout.setSpacing(8)
+
         # 删除按钮
         self.delete_button = QPushButton("删除")
         self.delete_button.setObjectName("deleteButton")

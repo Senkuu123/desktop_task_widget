@@ -24,7 +24,7 @@ class AddHabitDialog(QDialog):
     def initUI(self):
         self.setWindowTitle("编辑习惯" if self.habit else "添加习惯")
         self.setWindowModality(Qt.ApplicationModal)
-        self.setFixedSize(360, 340 if self.habit else 290)
+        self.setFixedSize(360, 260 if self.habit else 260)
 
         self.setStyleSheet("""
             QDialog {
