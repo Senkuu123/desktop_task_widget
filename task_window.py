@@ -6,7 +6,7 @@ from PyQt5.QtWidgets import (QApplication, QWidget, QVBoxLayout, QHBoxLayout,
                              QLabel, QDialog, QSlider, QGroupBox, QSizePolicy, QMessageBox,
                              QSpinBox, QTimeEdit, QScrollArea)
 from PyQt5.QtCore import Qt, QTimer, QPoint, QTime, pyqtSignal, QPropertyAnimation, QEasingCurve
-from PyQt5.QtGui import QPainter, QColor, QBrush, QPen, QCursor, QIcon
+from PyQt5.QtGui import QPainter, QColor, QBrush, QPen, QCursor, QIcon, QPixmap, QPainterPath
 from quick_notes.store import NoteStore
 from quick_notes.dialog import QuickNoteDialog
 from quick_notes.hotkey import NoteHotkey
@@ -1035,12 +1035,12 @@ class TransparentTaskWindow(QWidget):
         self.note_load_error = False
         self.note_dialog = None
         self.note_toast = None
-        self.previous_page = 'tasks'
         self.task_widgets = {}
         self.current_font_size = 11
         self.current_font_opacity = 100
         self.window_background_opacity = 0.8
-        self.current_page = 'tasks'  # 'tasks' 或 'habits'
+        self.current_page = 'tasks'
+        self.last_content_page = 'tasks'
         self.notified_task_ids = set()  # 已弹窗提醒的任务ID集合
         self.water_reminder = load_water_reminder()
         self.water_widget = None
@@ -1236,22 +1236,17 @@ class TransparentTaskWindow(QWidget):
         layout = QHBoxLayout(drag_area)
         layout.setContentsMargins(5, 0, 5, 0)
 
-        self.page_title = QLabel('待办事项')
-        self.page_title.setStyleSheet("color: white; background: transparent; font-family: 'Microsoft YaHei UI'; font-size: 11pt;")
-        self.page_title.setAttribute(Qt.WA_TransparentForMouseEvents)
-        layout.addWidget(self.page_title)
         layout.addStretch()
 
-        # 页面切换按钮
-        self.page_toggle_btn = QPushButton("📋")
-        self.page_toggle_btn.setFixedSize(25, 25)
-        self.page_toggle_btn.setToolTip("切换到习惯页")
-        self.page_toggle_btn.clicked.connect(self.toggle_page)
-        self.notes_toggle_btn = QPushButton('📝')
-        self.notes_toggle_btn.setFixedSize(25, 25)
-        self.notes_toggle_btn.setCheckable(True)
-        self.notes_toggle_btn.setToolTip('切换到便签列表（Ctrl＋Alt＋N快速记录）')
-        self.notes_toggle_btn.clicked.connect(self.toggle_notes_page)
+        self.content_page_btn = QPushButton('📋')
+        self.content_page_btn.setFixedSize(25, 25)
+        self.content_page_btn.clicked.connect(self.toggle_content_page)
+        self.water_page_btn = QPushButton()
+        self.water_page_btn.setFixedSize(25, 25)
+        self.water_page_btn.setToolTip('饮水小助手')
+        self.water_page_btn.setAccessibleName('饮水小助手')
+        self.water_page_btn.clicked.connect(lambda: self.show_page('habits'))
+        self.water_page_btn.setIcon(self.create_water_cup_icon())
 
         # 按钮配置
         buttons = [
@@ -1263,8 +1258,8 @@ class TransparentTaskWindow(QWidget):
         
         for icon, tooltip, callback, checkable in buttons:
             if icon is None:
-                layout.addWidget(self.page_toggle_btn)
-                layout.addWidget(self.notes_toggle_btn)
+                layout.addWidget(self.content_page_btn)
+                layout.addWidget(self.water_page_btn)
                 continue
             btn = QPushButton(icon)
             btn.setFixedSize(25, 25)
@@ -1409,7 +1404,7 @@ class TransparentTaskWindow(QWidget):
         self.drag_area.setStyleSheet(f"background: transparent; border-top-left-radius: 5px; border-top-right-radius: 5px;")
         self.list_container.setStyleSheet(f"background: transparent;")
         
-        for btn in [self.add_button, self.pin_button, self.settings_button, self.page_toggle_btn, self.notes_toggle_btn]:
+        for btn in [self.add_button, self.pin_button, self.settings_button, self.content_page_btn, self.water_page_btn]:
             btn.setStyleSheet(button_style)
 
         # 饮水模块按钮样式
@@ -1479,7 +1474,13 @@ class TransparentTaskWindow(QWidget):
 
     def refresh_task_display(self):
         """刷新任务/习惯显示"""
-        self.page_title.setText({'tasks': '待办事项', 'notes': '快捷便签', 'habits': '饮水小助手'}[self.current_page])
+        if self.current_page in ('tasks', 'notes'):
+            self.last_content_page = self.current_page
+        icon, label = ('📋', '待办事项') if self.last_content_page == 'tasks' else ('📝', '快捷便签')
+        target = '快捷便签' if self.last_content_page == 'tasks' else '待办事项'
+        self.content_page_btn.setText(icon)
+        self.content_page_btn.setAccessibleName(label)
+        self.content_page_btn.setToolTip(f'返回{label}' if self.current_page == 'habits' else f'切换到{target}')
         if self.current_page != 'notes':
             self.note_cards.clear()
             self.notes_status.hide()
@@ -2028,18 +2029,45 @@ class TransparentTaskWindow(QWidget):
 
     # ========== 页面切换 ==========
 
-    def toggle_page(self):
-        if self.current_page == 'notes':
-            self.current_page = self.previous_page
-        self.notes_toggle_btn.setChecked(False)
-        if self.current_page == 'tasks':
-            self.current_page = 'habits'
-            self.page_toggle_btn.setText("🔄")
-            self.page_toggle_btn.setToolTip("切换到任务页")
+    @staticmethod
+    def create_water_cup_icon():
+        pixmap = QPixmap(40, 40)
+        pixmap.fill(Qt.transparent)
+        painter = QPainter(pixmap)
+        painter.setRenderHint(QPainter.Antialiasing)
+        water = QPainterPath()
+        water.moveTo(11, 19)
+        water.quadTo(16, 16, 21, 19)
+        water.quadTo(26, 21, 29, 18)
+        water.lineTo(26, 33)
+        water.lineTo(14, 33)
+        water.closeSubpath()
+        painter.fillPath(water, QColor('#62b9ee'))
+        glass = QPainterPath()
+        glass.moveTo(9, 7)
+        glass.lineTo(13, 34)
+        glass.quadTo(20, 37, 27, 34)
+        glass.lineTo(31, 7)
+        glass.closeSubpath()
+        painter.setPen(QPen(QColor('#e1ecf2'), 2.5))
+        painter.drawPath(glass)
+        painter.end()
+        return QIcon(pixmap)
+
+    def toggle_content_page(self):
+        if self.current_page == 'habits':
+            self.show_page(self.last_content_page)
         else:
-            self.current_page = 'tasks'
-            self.page_toggle_btn.setText("📋")
-            self.page_toggle_btn.setToolTip("切换到习惯页")
+            self.show_page('notes' if self.current_page == 'tasks' else 'tasks')
+
+    def show_page(self, page):
+        if page == 'notes':
+            self.load_notes()
+        if self.current_page == page:
+            if page == 'notes':
+                self.refresh_task_display()
+            return
+        self.current_page = page
         self.refresh_task_display()
 
     def show_add_dialog(self):
@@ -2060,16 +2088,6 @@ class TransparentTaskWindow(QWidget):
             self.note_load_error = False
         except Exception:
             self.note_load_error = True
-
-    def toggle_notes_page(self):
-        if self.current_page == 'notes':
-            self.current_page = self.previous_page
-        else:
-            self.previous_page = self.current_page
-            self.current_page = 'notes'
-            self.load_notes()
-        self.notes_toggle_btn.setChecked(self.current_page == 'notes')
-        self.refresh_task_display()
 
     def refresh_notes_display(self):
         if not self.note_cards:
@@ -2137,10 +2155,7 @@ class TransparentTaskWindow(QWidget):
         QTimer.singleShot(0, self.show_saved_notes)
 
     def show_saved_notes(self):
-        if self.current_page != 'notes':
-            self.previous_page = self.current_page
         self.current_page = 'notes'
-        self.notes_toggle_btn.setChecked(True)
         self.refresh_task_display()
         if self.note_toast is None:
             self.note_toast = QLabel('便签已保存', self, Qt.ToolTip | Qt.WindowStaysOnTopHint)
