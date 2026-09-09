@@ -4,9 +4,13 @@ from datetime import datetime, date, timedelta
 from PyQt5.QtWidgets import (QApplication, QWidget, QVBoxLayout, QHBoxLayout,
                              QListWidget, QListWidgetItem, QPushButton, QCheckBox,
                              QLabel, QDialog, QSlider, QGroupBox, QSizePolicy, QMessageBox,
-                             QSpinBox, QTimeEdit, QScrollArea)
+                             QSpinBox, QTimeEdit, QScrollArea, QPlainTextEdit)
 from PyQt5.QtCore import Qt, QTimer, QPoint, QTime, pyqtSignal, QPropertyAnimation, QEasingCurve
-from PyQt5.QtGui import QPainter, QColor, QBrush, QPen, QCursor, QIcon
+from PyQt5.QtGui import QPainter, QColor, QBrush, QPen, QCursor, QIcon, QFont
+from quick_notes.store import NoteStore
+from quick_notes.dialog import QuickNoteDialog
+from quick_notes.hotkey import NoteHotkey
+from storage import get_data_dir
 from task import Task
 from habit import Habit
 from storage import (save_tasks_to_json, load_tasks_from_json, archive_task,
@@ -1023,6 +1027,12 @@ class TransparentTaskWindow(QWidget):
         super().__init__()
         self.tasks = []
         self.habits = []
+        self.notes = []
+        self.note_store = None
+        self.note_load_error = False
+        self.note_dialog = None
+        self.note_toast = None
+        self.previous_page = 'tasks'
         self.task_widgets = {}
         self.current_font_size = 11
         self.current_font_opacity = 100
@@ -1082,6 +1092,9 @@ class TransparentTaskWindow(QWidget):
         # 先设置基本窗口属性，再初始化UI
         self.setup_basic_window_properties()
         self.initUI()
+        self.note_hotkey = NoteHotkey(QApplication.instance(), self.show_quick_note)
+        if not self.note_hotkey.registered:
+            QTimer.singleShot(300, self.show_note_hotkey_warning)
         
         # 延迟加载任务，确保窗口完全初始化后再加载数据
         QTimer.singleShot(100, self.delayed_task_load)
@@ -1166,6 +1179,12 @@ class TransparentTaskWindow(QWidget):
         self.water_widget.setVisible(False)
         list_layout.addWidget(self.water_widget, 0)
 
+        self.notes_status = QLabel()
+        self.notes_status.setWordWrap(True)
+        self.notes_status.setStyleSheet('color: #ddd; padding: 6px; font-size: 10pt;')
+        self.notes_status.hide()
+        list_layout.addWidget(self.notes_status)
+
         self.task_list_widget = QListWidget()
         # 为列表控件设置唯一ID，防止样式继承冲突
         self.task_list_widget.setObjectName("TaskListWidget")
@@ -1220,6 +1239,11 @@ class TransparentTaskWindow(QWidget):
         self.page_toggle_btn.setFixedSize(25, 25)
         self.page_toggle_btn.setToolTip("切换到习惯页")
         self.page_toggle_btn.clicked.connect(self.toggle_page)
+        self.notes_toggle_btn = QPushButton('📝')
+        self.notes_toggle_btn.setFixedSize(25, 25)
+        self.notes_toggle_btn.setCheckable(True)
+        self.notes_toggle_btn.setToolTip('切换到便签列表（Ctrl＋Alt＋N快速记录）')
+        self.notes_toggle_btn.clicked.connect(self.toggle_notes_page)
 
         # 按钮配置
         buttons = [
@@ -1232,6 +1256,7 @@ class TransparentTaskWindow(QWidget):
         for icon, tooltip, callback, checkable in buttons:
             if icon is None:
                 layout.addWidget(self.page_toggle_btn)
+                layout.addWidget(self.notes_toggle_btn)
                 continue
             btn = QPushButton(icon)
             btn.setFixedSize(25, 25)
@@ -1376,7 +1401,7 @@ class TransparentTaskWindow(QWidget):
         self.drag_area.setStyleSheet(f"background: transparent; border-top-left-radius: 5px; border-top-right-radius: 5px;")
         self.list_container.setStyleSheet(f"background: transparent;")
         
-        for btn in [self.add_button, self.pin_button, self.settings_button, self.page_toggle_btn]:
+        for btn in [self.add_button, self.pin_button, self.settings_button, self.page_toggle_btn, self.notes_toggle_btn]:
             btn.setStyleSheet(button_style)
 
         # 饮水模块按钮样式
@@ -1446,6 +1471,12 @@ class TransparentTaskWindow(QWidget):
 
     def refresh_task_display(self):
         """刷新任务/习惯显示"""
+        self.notes_status.setVisible(self.current_page == 'notes')
+        self.task_list_widget.setWordWrap(self.current_page == 'notes')
+        if self.current_page == 'notes':
+            self.water_widget.setVisible(False)
+            self.refresh_notes_display()
+            return
         if self.current_page == 'habits':
             self.water_widget.setVisible(True)
             self.water_widget.update_countdown()
@@ -1497,6 +1528,19 @@ class TransparentTaskWindow(QWidget):
     
     def on_item_double_clicked(self, item):
         """列表项双击事件处理"""
+        if self.current_page == 'notes':
+            note = item.data(Qt.UserRole)
+            if note:
+                dialog = QDialog(self)
+                dialog.setWindowTitle('便签 · ' + note['created_at'])
+                dialog.resize(460, 320)
+                layout = QVBoxLayout(dialog)
+                editor = QPlainTextEdit()
+                editor.setPlainText(note['content'])
+                editor.setReadOnly(True)
+                layout.addWidget(editor)
+                dialog.exec_()
+            return
         if self.current_page == 'habits':
             self.on_habit_double_clicked(item)
             return
@@ -1756,6 +1800,9 @@ class TransparentTaskWindow(QWidget):
     
     def closeEvent(self, event):
         """窗口关闭事件 - 保存设置"""
+        self.note_hotkey.close()
+        if self.note_dialog:
+            self.note_dialog.close()
         print("📝 窗口关闭中，正在保存设置...")
         
         # 保存窗口设置
@@ -1971,6 +2018,9 @@ class TransparentTaskWindow(QWidget):
     # ========== 页面切换 ==========
 
     def toggle_page(self):
+        if self.current_page == 'notes':
+            self.current_page = self.previous_page
+        self.notes_toggle_btn.setChecked(False)
         if self.current_page == 'tasks':
             self.current_page = 'habits'
             self.page_toggle_btn.setText("🔄")
@@ -1982,10 +2032,101 @@ class TransparentTaskWindow(QWidget):
         self.refresh_task_display()
 
     def show_add_dialog(self):
-        if self.current_page == 'tasks':
+        if self.current_page == 'notes':
+            self.show_quick_note()
+        elif self.current_page == 'tasks':
             self.show_add_task_dialog()
         else:
             self.show_add_habit_dialog()
+
+    # ========== 快速便签 ==========
+
+    def load_notes(self):
+        try:
+            if self.note_store is None:
+                self.note_store = NoteStore(get_data_dir())
+            self.notes = self.note_store.load_notes()
+            self.note_load_error = False
+        except Exception:
+            self.note_load_error = True
+
+    def toggle_notes_page(self):
+        if self.current_page == 'notes':
+            self.current_page = self.previous_page
+        else:
+            self.previous_page = self.current_page
+            self.current_page = 'notes'
+            self.load_notes()
+        self.notes_toggle_btn.setChecked(self.current_page == 'notes')
+        self.refresh_task_display()
+
+    def refresh_notes_display(self):
+        self.task_list_widget.clear()
+        self.task_widgets.clear()
+        if self.note_load_error:
+            status = '便签读取失败，切换回便签页可重试。\n存档目录：' + get_data_dir()
+        elif not self.notes:
+            status = '暂无便签，点＋或按Ctrl＋Alt＋N记一条。'
+        else:
+            status = f'便签 · {len(self.notes)}条'
+        if self.note_store and self.note_store.log_error:
+            status += '\n便签已存档，日志导出失败；下次打开便签列表时重试。'
+        self.notes_status.setText(status)
+        for note in self.notes:
+            created = datetime.fromisoformat(note['created_at']).astimezone().strftime('%Y-%m-%d %H:%M:%S')
+            preview = note['content'][:240]
+            if len(note['content']) > 240:
+                preview += '…'
+            item = QListWidgetItem(created + '\n' + preview, self.task_list_widget)
+            item.setData(Qt.UserRole, note)
+            item.setFont(QFont('Microsoft YaHei', self.current_font_size))
+            item.setForeground(QColor(255, 255, 255, int(255 * self.current_font_opacity / 100)))
+
+    def show_quick_note(self):
+        if self.note_dialog is None:
+            self.note_dialog = QuickNoteDialog(self.save_quick_note, self, get_data_dir())
+        if not self.note_dialog.isVisible():
+            screen = QApplication.screenAt(QCursor.pos()) or QApplication.primaryScreen()
+            center = screen.availableGeometry().center()
+            self.note_dialog.move(center - self.note_dialog.rect().center())
+        self.note_dialog.show()
+        self.note_dialog.raise_()
+        self.note_dialog.activateWindow()
+        self.note_dialog.editor.setFocus()
+
+    def save_quick_note(self, content):
+        self.load_notes()
+        if self.note_load_error:
+            raise OSError('便签存档不可读')
+        note = self.note_store.create_note(content)
+        self.notes.insert(0, note)
+        # 写入成功后刷新界面，避免显示异常被误认为保存失败而重复提交。
+        QTimer.singleShot(0, self.show_saved_notes)
+
+    def show_saved_notes(self):
+        if self.current_page != 'notes':
+            self.previous_page = self.current_page
+        self.current_page = 'notes'
+        self.notes_toggle_btn.setChecked(True)
+        self.refresh_task_display()
+        if self.note_toast is None:
+            self.note_toast = QLabel('便签已保存', self, Qt.ToolTip | Qt.WindowStaysOnTopHint)
+            self.note_toast.setAttribute(Qt.WA_ShowWithoutActivating)
+            self.note_toast.setStyleSheet('background: #333; color: white; padding: 12px 20px; border-radius: 5px;')
+            self.note_toast_timer = QTimer(self)
+            self.note_toast_timer.setSingleShot(True)
+            self.note_toast_timer.timeout.connect(self.note_toast.hide)
+        self.note_toast.adjustSize()
+        screen = QApplication.screenAt(QCursor.pos()) or QApplication.primaryScreen()
+        self.note_toast.move(screen.availableGeometry().center() - self.note_toast.rect().center())
+        self.note_toast.show()
+        self.note_toast_timer.start(1600)
+        if self.note_store.log_error:
+            QMessageBox.warning(self, '便签已存档', '日志文件暂时无法导出。便签已保存在数据库中，重新打开便签列表会重试导出。')
+
+    def show_note_hotkey_warning(self):
+        QMessageBox.warning(self, '便签快捷键不可用',
+                            'Ctrl＋Alt＋N注册失败，可能已被其他程序占用。可切换到便签页后点＋记录。关闭占用程序并重启本程序可重试。')
 
     # ========== 习惯管理 ==========
 
@@ -2377,14 +2518,15 @@ class TransparentTaskWindow(QWidget):
         if screen is None:
             screen = QApplication.primaryScreen()
         sg = screen.geometry()
+        geo = self.geometry()
 
         enter = False
         if edge == 'left':
-            enter = pos.x() <= sg.left() + 1
+            enter = pos.x() <= sg.left() + 1 and geo.y() <= pos.y() <= geo.y() + geo.height()
         elif edge == 'right':
-            enter = pos.x() >= sg.right() - 1
+            enter = pos.x() >= sg.right() - 1 and geo.y() <= pos.y() <= geo.y() + geo.height()
         elif edge == 'top':
-            enter = pos.y() <= sg.top() + 1
+            enter = pos.y() <= sg.top() + 1 and geo.x() <= pos.x() <= geo.x() + geo.width()
 
         if enter:
             self._restore_from_edge()

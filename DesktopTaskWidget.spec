@@ -6,7 +6,7 @@ a = Analysis(
     pathex=[],
     binaries=[],
     datas=[('app_icon.ico', '.'), ('version_info.txt', '.'), ('dpi.manifest', '.'), ('images_rc.py', '.')],
-    hiddenimports=['PyQt5.sip', 'ctypes', 'winreg', 'platform', 'sys', 'os', 'datetime', 'json', 're', 'images_rc', 'winotify', 'winotify.notification'],
+    hiddenimports=['PyQt5.sip', 'ctypes', 'winreg', 'platform', 'sys', 'os', 'datetime', 'json', 're', 'images_rc', 'winotify'],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
@@ -36,5 +36,6 @@ exe = EXE(
     codesign_identity=None,
     entitlements_file=None,
     version='version_info.txt',
+    manifest='dpi.manifest',
     icon=['app_icon.ico'],
 )

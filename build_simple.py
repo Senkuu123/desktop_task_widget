@@ -6,6 +6,8 @@ import os
 import sys
 import subprocess
 
+PROJECT_DIR = os.path.dirname(os.path.abspath(__file__))
+
 def check_required_files():
     """检查必需的文件是否存在"""
     required_files = [
@@ -20,6 +22,11 @@ def check_required_files():
         'water_reminder.py',
         'autostart_manager.py',
         'images_rc.py',  # 新增资源文件
+        'DesktopTaskWidget.spec',
+        'quick_notes/__init__.py',
+        'quick_notes/dialog.py',
+        'quick_notes/hotkey.py',
+        'quick_notes/store.py',
         'app_icon.ico',
         'version_info.txt'
     ]
@@ -181,135 +188,53 @@ def create_dpi_manifest():
         return False
 
 def run_pyinstaller():
-    """运行PyInstaller"""
-    print("🚀🚀🚀🚀 开始打包，这可能需要几分钟...")
-    
-    # 检查图标文件
-    icon_file = 'app_icon.ico'
-    if not os.path.exists(icon_file):
-        print("❌❌❌❌ 图标文件不存在，尝试创建...")
-        if not create_default_icon():
-            print("⚠️  使用默认图标")
-            icon_param = []
-        else:
-            print(f"✅ 使用图标文件: {icon_file}")
-            icon_param = ['--icon=' + icon_file]
-    else:
-        print(f"✅ 使用图标文件: {icon_file}")
-        icon_param = ['--icon=' + icon_file]
-    
-    # 创建DPI manifest文件
-    create_dpi_manifest()
+    """使用当前Python环境和项目spec打包，不清理用户数据目录。"""
+    from importlib.util import find_spec
+    if find_spec('PyInstaller') is None:
+        print('当前Python环境未安装PyInstaller，请运行：')
+        print(f'"{sys.executable}" -m pip install pyinstaller')
+        return False
 
-    # 构建PyInstaller命令（优化DPI支持）
+    dist_dir = os.path.join(PROJECT_DIR, 'dist', 'quick-notes')
     cmd = [
-        'pyinstaller',
-        '--onefile',
-        '--windowed',
-        '--noconsole',
-        '--name=DesktopTaskWidget',
-        '--clean',
-        '--distpath=dist',
-        '--workpath=build',
-        # 隐藏导入
-        '--hidden-import=PyQt5.sip',
-        '--hidden-import=ctypes',
-        '--hidden-import=winreg',
-        '--hidden-import=platform',
-        '--hidden-import=sys',
-        '--hidden-import=os',
-        '--hidden-import=datetime',
-        '--hidden-import=json',
-        '--hidden-import=re',
-        '--hidden-import=images_rc',
-        '--hidden-import=winotify',
-        '--hidden-import=winotify.notification',
-        # 添加数据文件
-        '--add-data=app_icon.ico;.',
-        '--add-data=version_info.txt;.',
-        '--add-data=dpi.manifest;.',
-        '--add-data=images_rc.py;.',
-        # 使用manifest文件
-        '--version-file=version_info.txt',
-        # 启用UPX压缩（可选）
-        '--upx-dir=upx' if os.path.exists('upx') else '',
-    ] + icon_param + [
-        'main.py'
+        sys.executable, '-X', 'utf8', '-m', 'PyInstaller',
+        '--noconfirm',
+        '--distpath', dist_dir,
+        '--workpath', os.path.join(PROJECT_DIR, 'build', 'release'),
+        os.path.join(PROJECT_DIR, 'DesktopTaskWidget.spec'),
     ]
-    
-    # 移除空参数
-    cmd = [arg for arg in cmd if arg]
-    
+    print('开始打包，请先退出同目录正在运行的DesktopTaskWidget.exe。', flush=True)
     try:
-        # 执行打包命令
-        print("执行命令: " + " ".join(cmd))
-        result = subprocess.run(cmd, capture_output=True, text=True, encoding='utf-8')
-        
-        if result.returncode == 0:
-            print("✅ 打包成功！")
-            print(f"📁📁📁📁 EXE文件位置: {os.path.join('dist', 'DesktopTaskWidget.exe')}")
-            
-            # 显示文件大小
-            exe_path = os.path.join('dist', 'DesktopTaskWidget.exe')
-            if os.path.exists(exe_path):
-                size = os.path.getsize(exe_path) / (1024 * 1024)  # 转换为MB
-                print(f"📏📏📏📏 文件大小: {size:.2f} MB")
-                
-                # 验证DPI设置
-                print("\n🔍🔍🔍🔍 验证DPI设置:")
-                print("1. 检查exe属性中是否有DPI感知标记")
-                print("2. 在高DPI显示器上测试窗口缩放")
-                print("3. 查看程序启动日志中的DPI设置信息")
-                
-            # Windows 11优化提示
-            print("\n💡💡💡💡 Windows 11优化提示:")
-            print("1. 首次运行可能需要右键选择'以管理员身份运行'")
-            print("2. 如果任务栏图标显示异常，可以清理图标缓存:")
-            print("   - 删除 %localappdata%\\IconCache.db")
-            print("   - 重启资源管理器或重启电脑")
-            print("3. DPI设置需要Windows 10 1703+或Windows 11支持")
-                
-        else:
-            print("❌❌❌❌ 打包失败")
-            print("错误信息:")
-            print(result.stderr)
-            
-    except FileNotFoundError:
-        print("❌❌❌❌ 未找到PyInstaller，请先安装: pip install pyinstaller")
-    except Exception as e:
-        print(f"❌❌❌❌ 打包过程出错: {e}")
+        result = subprocess.run(cmd, cwd=PROJECT_DIR)
+    except OSError as error:
+        print(f'打包启动失败：{error}')
+        return False
+    if result.returncode != 0:
+        print('打包失败，请检查上方错误；原有数据文件保留。')
+        return False
 
-def clean_old_builds():
-    """清理旧构建文件"""
-    print("\n🧹🧹🧹🧹 清理旧构建文件...")
-    for folder in ['build', 'dist']:
-        if os.path.exists(folder):
-            try:
-                import shutil
-                shutil.rmtree(folder)
-                print(f"  已删除: {folder}")
-            except Exception as e:
-                print(f"  删除失败 {folder}: {e}")
+    exe_path = os.path.join(dist_dir, 'DesktopTaskWidget.exe')
+    if not os.path.isfile(exe_path):
+        print('打包未生成预期的exe文件。')
+        return False
+    print(f'打包完成：{exe_path}')
+    print(f'文件大小：{os.path.getsize(exe_path) / (1024 * 1024):.2f} MB')
+    print('任务、便签存档和日志继续保存在exe同目录。')
+    return True
+
 
 def main():
-    print("=" * 50)
-    print("    桌面任务小组件 - EXE打包工具 (Windows 11优化版)")
-    print("=" * 50)
-    print()
-    
-    # 检查文件
+    # 从其他目录启动脚本时，也始终使用本项目的源码和资源。
+    os.chdir(PROJECT_DIR)
+    if hasattr(sys.stdout, 'reconfigure'):
+        sys.stdout.reconfigure(encoding='utf-8')
+    print('桌面任务小组件打包工具')
     if not check_required_files():
-        print("\n请确保以上文件都在当前目录中")
-        input("按Enter键退出...")
-        return
-    
-    # 清理旧构建文件
-    clean_old_builds()
-    
-    # 执行打包
-    run_pyinstaller()
-    
-    print("\n" + "=" * 50)
+        return 1
+    if not os.path.exists('dpi.manifest') and not create_dpi_manifest():
+        return 1
+    return 0 if run_pyinstaller() else 1
+
 
 if __name__ == '__main__':
-    main()
+    sys.exit(main())

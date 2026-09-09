@@ -39,3 +39,47 @@
 - `habit.py` — 新建
 - `storage.py` — 新增习惯相关存储函数
 - `build_simple.py` — 新增habit.py、add_habit_dialog.py、winotify隐藏导入
+
+## 2026-09-09 09:54
+
+新增快速便签。
+- 主窗口增加便签列表切换按钮和便签页添加入口；Ctrl＋Alt＋N全局唤起，Enter保存，Shift＋Enter换行，Esc收起并保留本次运行草稿。
+- quick_notes目录包含输入窗口、Windows原生快捷键和持久化模块。SQLite事务同时保存便签与创建日志，notes_log.jsonl提供可读日志；导出失败可重建，不诱导重复保存。
+- 列表展示创建时间和内容摘要，双击查看及复制全文。保存成功有短提示，读写失败给出数据目录。
+- 验证：5项隔离自动化测试通过；Windows注册、冲突、原生事件投递、退出释放验证通过；按主程序DPI配置渲染并检查输入窗口和列表；git diff --check通过。中文输入法组合态由测试事件模拟，未完成真实输入法选词与其他应用间切换的手工验收。
+- 代码审查无阻断项；体验审查指出错误提示缺路径，已修复，并补充隐藏主窗口时的保存反馈。
+- 构建产物：dist/quick-notes/DesktopTaskWidget.exe。使用原spec打包成功，原spec的winotify.notification隐藏导入仍有未找到提示，本次未改旧通知逻辑。新版exe尚未人工启动验收。
+- 使用说明：README.md。验收约定：docs/quick-notes-ac.md。测试：tests/test_quick_notes.py、tests/verify_note_hotkey.py。
+- 本机venv目录解释器引用已失效，实际使用.venv/Scripts/python.exe；测试进程加-X utf8以兼容已有启动日志中的emoji。
+
+## 2026-09-09 10:26
+
+按flomo截图调整快捷便签弹窗。
+- quick_notes/dialog.py改为白底无边框460×480，中文标题和占位文案，固定/关闭图标、纯文本标签及列表工具、灰色空态和绿色可发送按钮。标题区域可拖动。
+- 删除弹窗快捷键说明及task_window.py便签列表的双击查看和复制全文说明。
+- 默认失焦或点击应用内外部区域时收起，保留草稿；固定后保持展开。右键菜单关闭后重新检查焦点，避免菜单边界漏收起。
+- 7项隔离回归测试通过，Windows Qt激活切换、固定、草稿恢复、菜单后外部点击验证通过；外部点击测试使用Qt事件，未做真实鼠标跨进程手工验收。截图按主程序DPI配置检查，体验静态审查通过。
+- 构建目标：dist/quick-notes/DesktopTaskWidget-flomo.exe，与旧版同目录共用数据，先退出旧版再运行。操作说明已更新README.md。
+- 新增tests/verify_note_popup.py验证焦点交互。临时spec放在build目录，使用绝对输入路径以避免PyInstaller按spec位置查找main.py失败。
+
+## 2026-09-09 10:53
+
+调整便签弹窗边框、缩放和置顶状态。
+- quick_notes/dialog.py使用透明窗口背景自绘白底细边框，按用户补充将圆角收小到6px。
+- 支持拖动四边与四角缩放，最小320×300；左/上边缩小时保持对侧位置，退出缩放后释放鼠标并恢复光标。
+- 置顶图钉改绿色实心并移除选中底色。底部按钮置顶时透明度为18%，悬停恢复，仍可点击。
+- 9项回归测试通过，包含拖动放大、缩小下限、淡化后悬停和保存；Windows焦点切换测试通过，已检查正常尺寸和最小尺寸截图。
+- 本轮局部弹窗调整由本体实现和自检，未另派reviewer。说明与验收文档已更新。
+- 新版产物：dist/quick-notes/DesktopTaskWidget-flomo-v2.exe；先退出旧版再运行，同目录数据继续使用。
+
+## 2026-09-09 10:56
+
+将quick_notes/dialog.py弹窗边框由深灰改为浅灰#d9d9d9，保留1px线宽和6px圆角。纯颜色调整，静态自检，不重复运行交互测试。新版输出dist/quick-notes/DesktopTaskWidget-flomo-v3.exe，README入口同步更新。
+
+## 2026-09-09 11:00
+
+更新打包脚本并创建源码Git快照。
+- build_simple.py检查便签模块和spec，使用当前Python解释器调用PyInstaller，固定项目路径，输出dist/quick-notes/DesktopTaskWidget.exe；移除删除build和dist的旧逻辑，避免误删exe旁的数据，失败返回非零状态。
+- DesktopTaskWidget.spec移除不存在的winotify.notification隐藏导入，并实际嵌入dpi.manifest。README已更新打包命令与固定产物路径。
+- 已通过新脚本完成实际构建，生成54.38MB的exe；git diff --check通过。
+- 快照范围为当前源码、项目规范、验收文档、测试和工作日志，个人任务/饮水/窗口数据及IDE配置不提交；构建产物留在dist目录。
