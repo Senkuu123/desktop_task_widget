@@ -83,3 +83,14 @@
 - DesktopTaskWidget.spec移除不存在的winotify.notification隐藏导入，并实际嵌入dpi.manifest。README已更新打包命令与固定产物路径。
 - 已通过新脚本完成实际构建，生成54.38MB的exe；git diff --check通过。
 - 快照范围为当前源码、项目规范、验收文档、测试和工作日志，个人任务/饮水/窗口数据及IDE配置不提交；构建产物留在dist目录。
+
+## 2026-09-09 11:09
+
+便签弹窗增加轻微外阴影。
+- quick_notes/dialog.py预留12px透明边距，叠加柔和灰黑阴影并略向下偏移；保留浅灰边框与6px圆角，可见输入区域尺寸不变。
+- 缩放热区随阴影边距调整；9项回归测试通过，已渲染检查阴影效果。
+- 使用build_simple.py更新dist/quick-notes/DesktopTaskWidget.exe，README同步说明；本次改动未另建Git提交。
+
+## 2026-09-09 16:45
+
+按用户要求将便签阴影代码、README和工作日志保存为本地Git快照；个人数据和IDE配置继续留在工作区。

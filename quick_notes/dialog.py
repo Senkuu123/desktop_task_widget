@@ -86,6 +86,8 @@ class NoteEditor(QPlainTextEdit):
 
 
 class QuickNoteDialog(QDialog):
+    SHADOW_MARGIN = 12
+
     def __init__(self, save_note, parent=None, data_dir=None):
         super().__init__(parent, Qt.Tool | Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint)
         self.save_note = save_note
@@ -96,8 +98,8 @@ class QuickNoteDialog(QDialog):
         self.setAttribute(Qt.WA_TranslucentBackground)
         self.setMouseTracking(True)
         self.setWindowTitle('快速便签')
-        self.resize(460, 480)
-        self.setMinimumSize(320, 300)
+        self.resize(460 + 2 * self.SHADOW_MARGIN, 480 + 2 * self.SHADOW_MARGIN)
+        self.setMinimumSize(320 + 2 * self.SHADOW_MARGIN, 300 + 2 * self.SHADOW_MARGIN)
         self.setStyleSheet('''
             QDialog { background: transparent; }
             QWidget { font-family: 'Microsoft YaHei UI'; }
@@ -119,7 +121,8 @@ class QuickNoteDialog(QDialog):
             QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical { background: transparent; }
         ''')
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(16, 16, 12, 12)
+        margin = self.SHADOW_MARGIN
+        layout.setContentsMargins(16 + margin, 16 + margin, 12 + margin, 12 + margin)
         layout.setSpacing(10)
         self.header = QWidget(self)
         header_layout = QHBoxLayout(self.header)
@@ -186,19 +189,28 @@ class QuickNoteDialog(QDialog):
     def paintEvent(self, event):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.Antialiasing)
+        margin = self.SHADOW_MARGIN + 0.5
+        body = QRectF(self.rect()).adjusted(margin, margin, -margin, -margin)
+        # 在预留的透明边距内叠加柔和阴影，避免被窗口边界裁切。
+        painter.setPen(Qt.NoPen)
+        for spread in range(10, 0, -1):
+            painter.setBrush(QColor(0, 0, 0, 2 if spread > 5 else 3))
+            shadow = body.translated(0, 2).adjusted(-spread, -spread, spread, spread)
+            painter.drawRoundedRect(shadow, 6 + spread, 6 + spread)
         painter.setPen(QPen(QColor('#d9d9d9'), 1))
         painter.setBrush(Qt.white)
-        painter.drawRoundedRect(QRectF(self.rect()).adjusted(0.5, 0.5, -0.5, -0.5), 6, 6)
+        painter.drawRoundedRect(body, 6, 6)
 
     def resize_edges_at(self, pos):
         edges = ''
-        if pos.x() < 7:
+        edge_width = self.SHADOW_MARGIN + 7
+        if pos.x() < edge_width:
             edges += 'l'
-        elif pos.x() >= self.width() - 7:
+        elif pos.x() >= self.width() - edge_width:
             edges += 'r'
-        if pos.y() < 7:
+        if pos.y() < edge_width:
             edges += 't'
-        elif pos.y() >= self.height() - 7:
+        elif pos.y() >= self.height() - edge_width:
             edges += 'b'
         return edges
 
