@@ -4,6 +4,8 @@ import os
 os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
 
 import json
+import sqlite3
+from contextlib import closing
 import tempfile
 import unittest
 from pathlib import Path
@@ -96,8 +98,10 @@ class NoteTests(unittest.TestCase):
                 patch.object(task_window, 'load_water_reminder', return_value=task_window.WaterReminder()):
             hotkey.return_value.registered = True
             window = task_window.TransparentTaskWindow()
+            self.assertEqual(window.page_title.text(), '待办事项')
             window.toggle_page()
             self.assertEqual(window.current_page, 'habits')
+            self.assertEqual(window.page_title.text(), '饮水小助手')
             window.toggle_notes_page()
             self.assertEqual(window.current_page, 'notes')
             self.assertIn('暂无便签', window.notes_status.text())
@@ -107,14 +111,78 @@ class NoteTests(unittest.TestCase):
             self.app.processEvents()
             self.assertEqual(window.current_page, 'notes')
             self.assertEqual(window.task_list_widget.count(), 1)
-            self.assertIn('界面保存测试', window.task_list_widget.item(0).text())
+            self.assertEqual(window.page_title.text(), '快捷便签')
+            card = window.task_list_widget.itemWidget(window.task_list_widget.item(0))
+            self.assertIn('界面保存测试', card.content_label.text())
+            self.assertEqual(window.notes_status.text(), '')
+            note_id = card.note['id']
+            window.on_item_double_clicked(card.item)
+            self.assertTrue(card.is_editing)
+            card.editor.setPlainText('编辑中的草稿')
+            window.refresh_task_display()
+            self.assertIs(window.note_cards[note_id], card)
+            self.assertEqual(card.editor.toPlainText(), '编辑中的草稿')
+            window.toggle_notes_page()
+            window.toggle_notes_page()
+            card = window.note_cards[note_id]
+            self.assertTrue(card.is_editing)
+            self.assertEqual(card.editor.toPlainText(), '编辑中的草稿')
+            card.cancel_button.click()
+            self.assertEqual(card.content_label.text(), '界面保存测试')
+            card.begin_edit()
+            card.editor.setPlainText('修改后的正文')
+            with patch.object(window.note_store, 'update_note', side_effect=OSError('blocked')):
+                card.save()
+            self.assertTrue(card.is_editing)
+            self.assertEqual(card.editor.toPlainText(), '修改后的正文')
+            self.assertTrue(card.error.text())
+            card.save()
+            self.assertFalse(card.is_editing)
+            self.assertEqual(card.content_label.text(), '修改后的正文')
+            self.assertEqual(NoteStore(directory).load_notes()[0]['content'], '修改后的正文')
             self.assertNotIn('双击查看', window.notes_status.text())
             window.toggle_notes_page()
             self.assertEqual(window.current_page, 'habits')
             window.toggle_page()
             self.assertEqual(window.current_page, 'tasks')
+            window.save_quick_note(('很长的便签正文\n' * 100).strip())
+            window.resize(320, 420)
+            window.show()
+            self.app.processEvents()
+            long_card = window.note_cards[window.notes[0]['id']]
+            scrollbar = window.task_list_widget.verticalScrollBar()
+            self.assertGreater(scrollbar.maximum(), 400)
+            scrollbar.setValue(400)
+            self.assertEqual(scrollbar.value(), 400)
+            long_card.begin_edit()
+            self.app.processEvents()
+            self.assertTrue(window.task_list_widget.visualItemRect(long_card.item).intersects(window.task_list_widget.viewport().rect()))
             window.close()
             hotkey.return_value.close.assert_called_once()
+
+    def test_edit_preserves_creation_and_logs_history(self):
+        with tempfile.TemporaryDirectory() as directory:
+            store = NoteStore(directory)
+            first = store.create_note('原始内容')
+            second = store.create_note('后创建的便签')
+            updated = store.update_note(first['id'], '修改后\n多行')
+            self.assertEqual(updated['created_at'], first['created_at'])
+            self.assertEqual([n['id'] for n in store.load_notes()], [second['id'], first['id']])
+            records = [json.loads(line) for line in store.log_path.read_text(encoding='utf-8').splitlines()]
+            self.assertEqual(records[0]['content'], '原始内容')
+            self.assertEqual(records[-1]['before_content'], '原始内容')
+            self.assertEqual(records[-1]['content'], '修改后\n多行')
+            self.assertEqual(records[-1]['action'], 'edit')
+            with self.assertRaises(ValueError):
+                store.update_note(first['id'], '  ')
+            with self.assertRaises(ValueError):
+                store.update_note('missing', '正文')
+            with closing(sqlite3.connect(store.archive_path)) as connection:
+                connection.execute("CREATE TRIGGER reject_edit BEFORE INSERT ON edit_log BEGIN SELECT RAISE(ABORT, 'blocked'); END")
+                connection.commit()
+            with self.assertRaises(sqlite3.Error):
+                store.update_note(first['id'], '不能提交')
+            self.assertEqual(store.load_notes()[1]['content'], '修改后\n多行')
 
     def test_outside_deactivation_preserves_draft_and_pin(self):
         dialog = QuickNoteDialog(lambda content: None)

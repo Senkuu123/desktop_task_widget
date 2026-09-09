@@ -27,6 +27,11 @@ class NoteStore:
                     "id TEXT PRIMARY KEY, created_at TEXT NOT NULL, "
                     "content TEXT NOT NULL)"
                 )
+                connection.execute(
+                    "CREATE TABLE IF NOT EXISTS edit_log ("
+                    "id TEXT NOT NULL, edited_at TEXT NOT NULL, "
+                    "before_content TEXT NOT NULL, content TEXT NOT NULL)"
+                )
 
     def load_notes(self) -> list[dict[str, str]]:
         with closing(sqlite3.connect(self.archive_path)) as connection:
@@ -59,6 +64,33 @@ class NoteStore:
         self._export_log()
         return note
 
+    def update_note(self, note_id: str, content: str) -> dict[str, str]:
+        content = content.strip()
+        if not content:
+            raise ValueError("便签内容不能为空")
+        with closing(sqlite3.connect(self.archive_path)) as connection:
+            connection.row_factory = sqlite3.Row
+            with connection:
+                connection.execute("BEGIN IMMEDIATE")
+                row = connection.execute(
+                    "SELECT id, created_at, content FROM notes WHERE id = ?",
+                    (note_id,),
+                ).fetchone()
+                if row is None:
+                    raise ValueError("便签不存在")
+                note = dict(row)
+                connection.execute(
+                    "UPDATE notes SET content = ? WHERE id = ?", (content, note_id)
+                )
+                connection.execute(
+                    "INSERT INTO edit_log (id, edited_at, before_content, content) "
+                    "VALUES (?, ?, ?, ?)",
+                    (note_id, datetime.now().astimezone().isoformat(), note["content"], content),
+                )
+                note["content"] = content
+        self._export_log()
+        return note
+
     def _export_log(self) -> None:
         temporary_path = None
         try:
@@ -79,12 +111,18 @@ class NoteStore:
                         temporary_path = Path(stream.name)
                         for row in rows:
                             stream.write(json.dumps(dict(row), ensure_ascii=False) + "\n")
+                        edits = connection.execute(
+                            "SELECT 'edit' AS action, id, edited_at, before_content, content "
+                            "FROM edit_log ORDER BY rowid"
+                        )
+                        for row in edits:
+                            stream.write(json.dumps(dict(row), ensure_ascii=False) + "\n")
                         stream.flush()
                         os.fsync(stream.fileno())
                     os.replace(temporary_path, self.log_path)
             self.log_error = None
         except (OSError, sqlite3.Error, UnicodeError) as error:
-            self.log_error = f"便签已存档，创建日志导出失败：{error}"
+            self.log_error = f"便签已存档，便签日志导出失败：{error}"
         finally:
             if temporary_path is not None:
                 try:

@@ -4,12 +4,13 @@ from datetime import datetime, date, timedelta
 from PyQt5.QtWidgets import (QApplication, QWidget, QVBoxLayout, QHBoxLayout,
                              QListWidget, QListWidgetItem, QPushButton, QCheckBox,
                              QLabel, QDialog, QSlider, QGroupBox, QSizePolicy, QMessageBox,
-                             QSpinBox, QTimeEdit, QScrollArea, QPlainTextEdit)
+                             QSpinBox, QTimeEdit, QScrollArea)
 from PyQt5.QtCore import Qt, QTimer, QPoint, QTime, pyqtSignal, QPropertyAnimation, QEasingCurve
-from PyQt5.QtGui import QPainter, QColor, QBrush, QPen, QCursor, QIcon, QFont
+from PyQt5.QtGui import QPainter, QColor, QBrush, QPen, QCursor, QIcon
 from quick_notes.store import NoteStore
 from quick_notes.dialog import QuickNoteDialog
 from quick_notes.hotkey import NoteHotkey
+from quick_notes.card import NoteCard
 from storage import get_data_dir
 from task import Task
 from habit import Habit
@@ -1028,6 +1029,8 @@ class TransparentTaskWindow(QWidget):
         self.tasks = []
         self.habits = []
         self.notes = []
+        self.note_cards = {}
+        self.note_drafts = {}
         self.note_store = None
         self.note_load_error = False
         self.note_dialog = None
@@ -1194,6 +1197,7 @@ class TransparentTaskWindow(QWidget):
         self.task_list_widget.setHorizontalScrollMode(QListWidget.ScrollPerPixel)
         self.task_list_widget.setWrapping(False)  # 禁用自动换行
         self.task_list_widget.itemDoubleClicked.connect(self.on_item_double_clicked)
+        self.task_list_widget.viewport().installEventFilter(self)
         
         # 设置列表控件的边距，确保与任务项边距一致
         self.task_list_widget.setContentsMargins(0, 0, 0, 0)
@@ -1232,6 +1236,10 @@ class TransparentTaskWindow(QWidget):
         layout = QHBoxLayout(drag_area)
         layout.setContentsMargins(5, 0, 5, 0)
 
+        self.page_title = QLabel('待办事项')
+        self.page_title.setStyleSheet("color: white; background: transparent; font-family: 'Microsoft YaHei UI'; font-size: 11pt;")
+        self.page_title.setAttribute(Qt.WA_TransparentForMouseEvents)
+        layout.addWidget(self.page_title)
         layout.addStretch()
 
         # 页面切换按钮
@@ -1471,8 +1479,13 @@ class TransparentTaskWindow(QWidget):
 
     def refresh_task_display(self):
         """刷新任务/习惯显示"""
-        self.notes_status.setVisible(self.current_page == 'notes')
+        self.page_title.setText({'tasks': '待办事项', 'notes': '快捷便签', 'habits': '饮水小助手'}[self.current_page])
+        if self.current_page != 'notes':
+            self.note_cards.clear()
+            self.notes_status.hide()
         self.task_list_widget.setWordWrap(self.current_page == 'notes')
+        self.task_list_widget.setVerticalScrollMode(QListWidget.ScrollPerPixel if self.current_page == 'notes' else QListWidget.ScrollPerItem)
+        self.task_list_widget.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff if self.current_page == 'notes' else Qt.ScrollBarAsNeeded)
         if self.current_page == 'notes':
             self.water_widget.setVisible(False)
             self.refresh_notes_display()
@@ -1529,17 +1542,9 @@ class TransparentTaskWindow(QWidget):
     def on_item_double_clicked(self, item):
         """列表项双击事件处理"""
         if self.current_page == 'notes':
-            note = item.data(Qt.UserRole)
-            if note:
-                dialog = QDialog(self)
-                dialog.setWindowTitle('便签 · ' + note['created_at'])
-                dialog.resize(460, 320)
-                layout = QVBoxLayout(dialog)
-                editor = QPlainTextEdit()
-                editor.setPlainText(note['content'])
-                editor.setReadOnly(True)
-                layout.addWidget(editor)
-                dialog.exec_()
+            card = self.task_list_widget.itemWidget(item)
+            if isinstance(card, NoteCard):
+                card.begin_edit()
             return
         if self.current_page == 'habits':
             self.on_habit_double_clicked(item)
@@ -1846,6 +1851,9 @@ class TransparentTaskWindow(QWidget):
     
     def update_task_item_widths(self):
         """更新任务项宽度"""
+        if self.current_page == 'notes':
+            self.resize_note_cards()
+            return
         if self.task_list_widget.count() > 0:
             for i in range(self.task_list_widget.count()):
                 item = self.task_list_widget.item(i)
@@ -1903,6 +1911,9 @@ class TransparentTaskWindow(QWidget):
 
     def eventFilter(self, obj, event):
         """事件过滤器"""
+        if (event.type() == event.Resize and hasattr(self, 'task_list_widget')
+                and obj is self.task_list_widget.viewport() and self.current_page == 'notes'):
+            QTimer.singleShot(0, self.resize_note_cards)
         if event.type() == event.WindowDeactivate:
             self.task_list_widget.clearSelection()
         return super().eventFilter(obj, event)
@@ -2061,26 +2072,48 @@ class TransparentTaskWindow(QWidget):
         self.refresh_task_display()
 
     def refresh_notes_display(self):
-        self.task_list_widget.clear()
-        self.task_widgets.clear()
+        if not self.note_cards:
+            self.task_list_widget.clear()
+            self.task_widgets.clear()
         if self.note_load_error:
             status = '便签读取失败，切换回便签页可重试。\n存档目录：' + get_data_dir()
         elif not self.notes:
             status = '暂无便签，点＋或按Ctrl＋Alt＋N记一条。'
         else:
-            status = f'便签 · {len(self.notes)}条'
+            status = ''
         if self.note_store and self.note_store.log_error:
             status += '\n便签已存档，日志导出失败；下次打开便签列表时重试。'
         self.notes_status.setText(status)
-        for note in self.notes:
-            created = datetime.fromisoformat(note['created_at']).astimezone().strftime('%Y-%m-%d %H:%M:%S')
-            preview = note['content'][:240]
-            if len(note['content']) > 240:
-                preview += '…'
-            item = QListWidgetItem(created + '\n' + preview, self.task_list_widget)
-            item.setData(Qt.UserRole, note)
-            item.setFont(QFont('Microsoft YaHei', self.current_font_size))
-            item.setForeground(QColor(255, 255, 255, int(255 * self.current_font_opacity / 100)))
+        self.notes_status.setVisible(bool(status))
+        for index, note in enumerate(self.notes):
+            card = self.note_cards.get(note['id'])
+            if card is None:
+                item = QListWidgetItem()
+                item.setData(Qt.UserRole, note)
+                item.setFlags(item.flags() & ~Qt.ItemIsSelectable)
+                self.task_list_widget.insertItem(index, item)
+                card = NoteCard(note, self, item)
+                self.note_cards[note['id']] = card
+                self.task_widgets[note['id']] = card
+                self.task_list_widget.setItemWidget(item, card)
+            elif not card.is_editing:
+                card.note = dict(note)
+                card.content_label.setText(note['content'])
+            card.sync_size()
+
+    def resize_note_cards(self):
+        if self.current_page == 'notes':
+            for card in self.note_cards.values():
+                card.sync_size()
+
+    def update_inline_note(self, note_id, content):
+        updated = self.note_store.update_note(note_id, content)
+        for index, note in enumerate(self.notes):
+            if note['id'] == note_id:
+                self.notes[index] = updated
+                break
+        QTimer.singleShot(0, self.refresh_task_display)
+        return updated
 
     def show_quick_note(self):
         if self.note_dialog is None:
