@@ -144,7 +144,7 @@ class NoteTests(unittest.TestCase):
             window.water_page_btn.click()
             window.water_page_btn.click()
             self.assertEqual(window.current_page, 'habits')
-            self.assertFalse(window.water_page_btn.icon().isNull())
+            self.assertEqual(window.water_page_btn.text(), '🔄')
             window.content_page_btn.click()
             self.assertEqual(window.current_page, 'notes')
             window.content_page_btn.click()

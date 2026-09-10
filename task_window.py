@@ -1517,7 +1517,8 @@ class TransparentTaskWindow(QWidget):
         if self.current_page in ('water', 'habits'):
             self.last_water_page = self.current_page
         is_habits = self.last_water_page == 'habits'
-        self.water_page_btn.setIcon(self.create_habit_icon() if is_habits else self.create_water_cup_icon())
+        self.water_page_btn.setText('🔄' if is_habits else '')
+        self.water_page_btn.setIcon(QIcon() if is_habits else self.create_water_cup_icon())
         self.water_page_btn.setAccessibleName('习惯列表' if is_habits else '饮水小助手')
         self.water_page_btn.setToolTip(('切换到饮水小助手' if is_habits else '切换到习惯列表')
                                      if self.current_page in ('water', 'habits') else ('打开习惯列表' if is_habits else '打开饮水小助手'))
@@ -2080,6 +2081,8 @@ class TransparentTaskWindow(QWidget):
         pixmap.fill(Qt.transparent)
         painter = QPainter(pixmap)
         painter.setRenderHint(QPainter.Antialiasing)
+        # 图标按几何中心排布，旁边emoji按字体基线排布；向下补偿约1个逻辑像素。
+        painter.translate(0, 2.5)
         water = QPainterPath()
         water.moveTo(11, 19)
         water.quadTo(16, 16, 21, 19)
@@ -2096,26 +2099,6 @@ class TransparentTaskWindow(QWidget):
         glass.closeSubpath()
         painter.setPen(QPen(QColor('#e1ecf2'), 2.5))
         painter.drawPath(glass)
-        painter.end()
-        return QIcon(pixmap)
-
-    @staticmethod
-    def create_habit_icon():
-        pixmap = QPixmap(40, 40)
-        pixmap.fill(Qt.transparent)
-        painter = QPainter(pixmap)
-        painter.setRenderHint(QPainter.Antialiasing)
-        painter.setPen(Qt.NoPen)
-        painter.setBrush(QColor('#3287d7'))
-        painter.drawRoundedRect(2, 2, 36, 36, 6, 6)
-        painter.setBrush(Qt.NoBrush)
-        painter.setPen(QPen(Qt.white, 3))
-        painter.drawArc(10, 10, 20, 20, 35 * 16, 265 * 16)
-        arrow = QPainterPath()
-        arrow.moveTo(29, 9)
-        arrow.lineTo(30, 17)
-        arrow.lineTo(22, 15)
-        painter.fillPath(arrow, Qt.white)
         painter.end()
         return QIcon(pixmap)
 
