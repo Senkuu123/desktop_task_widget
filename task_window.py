@@ -2496,6 +2496,7 @@ class TransparentTaskWindow(QWidget):
             screen = QApplication.primaryScreen()
         sg = screen.geometry()
 
+        self._edge_screen_geometry = sg
         targets = {
             'left':   (sg.left() - geo.width(), geo.y()),
             'right':  (sg.right() + 1, geo.y()),
@@ -2571,14 +2572,15 @@ class TransparentTaskWindow(QWidget):
         if self._show_anim and self._show_anim.state() == QPropertyAnimation.Running:
             self._show_anim.stop()
 
-        orig = self._original_pos if self._original_pos else self.pos()
+        orig = self._original_pos if self._original_pos is not None else self.pos()
         screen = QApplication.screenAt(orig)
         if screen:
             sg = screen.geometry()
         else:
             sg = QApplication.primaryScreen().geometry()
-        ox = max(sg.left(), min(orig.x(), sg.right() - self.width()))
-        oy = max(sg.top(), min(orig.y(), sg.bottom() - self.height()))
+        # QRect的right/bottom包含末端像素，恢复位置须与吸附位置一致。
+        ox = max(sg.left(), min(orig.x(), sg.right() + 1 - self.width()))
+        oy = max(sg.top(), min(orig.y(), sg.bottom() + 1 - self.height()))
 
         anim = QPropertyAnimation(self, b"pos")
         anim.setDuration(300)
@@ -2619,30 +2621,32 @@ class TransparentTaskWindow(QWidget):
             self.edge_restore_timer.stop()
             self.edge_restore_timer = None
 
+    def _cursor_in_edge_trigger(self, pos):
+        # 唤出和保持展开使用同一屏幕、同一条触发区域，避免坐标舍入形成缝隙。
+        edge = self._current_edge
+        origin = self._original_pos if self._original_pos is not None else self.pos()
+        sg = getattr(self, '_edge_screen_geometry', None)
+        if sg is None:
+            screen = QApplication.screenAt(origin) or QApplication.primaryScreen()
+            sg = screen.geometry()
+        # 高DPI原生像素转逻辑坐标可能舍入到right+1/bottom+1。
+        if not sg.adjusted(-1, -1, 1, 1).contains(pos):
+            return False
+        if edge == 'left':
+            return pos.x() <= sg.left() + 1 and origin.y() <= pos.y() < origin.y() + self.height()
+        if edge == 'right':
+            return pos.x() >= sg.right() - 1 and origin.y() <= pos.y() < origin.y() + self.height()
+        if edge == 'top':
+            return pos.y() <= sg.top() + 1 and origin.x() <= pos.x() < origin.x() + self.width()
+        return False
+
     def _check_cursor_near_hidden_edge(self):
-        """检测光标是否进入被隐藏边缘的2px条，触发恢复"""
+        """检测光标是否进入被隐藏边缘的2px条，触发恢复。"""
         if not self.edge_hidden or not self._current_edge or self._restoring:
             return
         if self._hide_anim and self._hide_anim.state() == QPropertyAnimation.Running:
             return
-
-        pos = QCursor.pos()
-        edge = self._current_edge
-        screen = QApplication.screenAt(pos)
-        if screen is None:
-            screen = QApplication.primaryScreen()
-        sg = screen.geometry()
-        geo = self.geometry()
-
-        enter = False
-        if edge == 'left':
-            enter = pos.x() <= sg.left() + 1 and geo.y() <= pos.y() <= geo.y() + geo.height()
-        elif edge == 'right':
-            enter = pos.x() >= sg.right() - 1 and geo.y() <= pos.y() <= geo.y() + geo.height()
-        elif edge == 'top':
-            enter = pos.y() <= sg.top() + 1 and geo.x() <= pos.x() <= geo.x() + geo.width()
-
-        if enter:
+        if self._cursor_in_edge_trigger(QCursor.pos()):
             self._restore_from_edge()
 
     def _start_rehide_timer(self):
@@ -2661,11 +2665,11 @@ class TransparentTaskWindow(QWidget):
         if not self._should_rehide or not self._current_edge:
             self._stop_rehide_timer()
             return
-        if self._pending_hide:
+        if self._pending_hide or self._restoring or self.edge_hidden:
             return
         cursor = QCursor.pos()
         geo = self.geometry()
-        if not geo.contains(cursor):
+        if not geo.contains(cursor) and not self._cursor_in_edge_trigger(cursor):
             self._stop_rehide_timer()
             edge = self._current_edge
             self._hide_at_edge(edge)

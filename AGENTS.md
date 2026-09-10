@@ -120,3 +120,6 @@ Transform tasks into verifiable goals:
 - "Refactor X" → "Ensure tests pass before and after"
 
 For multi-step tasks, state a brief plan:
+### 贴边隐藏回归约定
+
+- 隐藏恢复问题不能仅验证目标矩形。需使用实际Windows窗口动画和定时器验证持续悬停、移出隐藏；唤出区域与保持展开区域应一致。曾发生1像素修正测试通过但用户仍复现，报告必须区分模拟坐标测试与用户现场。

@@ -9,8 +9,8 @@ from contextlib import closing
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import patch
-from PyQt5.QtCore import Qt, QEvent, QPoint, QPointF, QCoreApplication
+from unittest.mock import patch, Mock
+from PyQt5.QtCore import Qt, QEvent, QPoint, QPointF, QCoreApplication, QRect
 from PyQt5.QtGui import QInputMethodEvent, QMouseEvent
 from PyQt5.QtTest import QTest
 from PyQt5.QtWidgets import QApplication
@@ -258,6 +258,54 @@ class NoteTests(unittest.TestCase):
             self.assertEqual(window.water_page_btn.accessibleName(), '习惯列表')
             window.water_page_btn.click()
             self.assertEqual(window.current_page, 'water')
+            # 最右侧像素属于屏幕与恢复后的窗口，持续悬停不得再隐藏。
+            for screen_rect in (QRect(0, 0, 1920, 1080), QRect(-1280, -100, 1280, 1024)):
+                screen = Mock()
+                screen.geometry.return_value = screen_rect
+                for edge in ('right', 'left', 'top'):
+                    x = screen_rect.right() + 1 - window.width() if edge == 'right' else screen_rect.left()
+                    y = screen_rect.top()
+                    window._edge_screen_geometry = screen_rect
+                    window._original_pos = QPoint(x, y)
+                    window.edge_hidden = True
+                    window._current_edge = edge
+                    window._should_rehide = True
+                    window._pending_hide = False
+                    with patch.object(task_window.QApplication, 'screenAt', return_value=screen):
+                        window._restore_from_edge()
+                    target = window._show_anim.endValue()
+                    window._show_anim.stop()
+                    restored_geometry = QRect(target, window.size())
+                    window._restoring = False
+                    cursor = QPoint(screen_rect.right(), y + 20) if edge == 'right' else (
+                        QPoint(x, y + 20) if edge == 'left' else QPoint(x + 20, screen_rect.top()))
+                    # 即使平台实际窗口向内偏移，鼠标停在原唤出区域也应保持展开。
+                    shifted = restored_geometry.translated(-2, 0) if edge == 'right' else (
+                        restored_geometry.translated(2, 0) if edge == 'left' else restored_geometry.translated(0, 2))
+                    with patch.object(window, 'geometry', return_value=shifted), \
+                            patch.object(task_window.QCursor, 'pos', return_value=cursor), \
+                            patch.object(window, '_hide_at_edge') as hide:
+                        for _ in range(5):
+                            window._check_rehide()
+                        hide.assert_not_called()
+                    self.assertFalse(window._cursor_in_edge_trigger(QPoint(screen_rect.right() + 2, y + 20)))
+                    if edge == 'right':
+                        rounded_cursor = QPoint(screen_rect.right() + 1, y + 20)
+                        self.assertTrue(window._cursor_in_edge_trigger(rounded_cursor))
+                        with patch.object(task_window.QCursor, 'pos', return_value=rounded_cursor), patch.object(window, '_hide_at_edge') as hide:
+                            window._check_rehide()
+                            hide.assert_not_called()
+                    with patch.object(window, 'geometry', return_value=restored_geometry), \
+                            patch.object(task_window.QCursor, 'pos', return_value=cursor), \
+                            patch.object(window, '_hide_at_edge') as hide:
+                        for _ in range(5):
+                            window._check_rehide()
+                        hide.assert_not_called()
+                    with patch.object(window, 'geometry', return_value=restored_geometry), \
+                            patch.object(task_window.QCursor, 'pos', return_value=restored_geometry.bottomLeft() + QPoint(-2, 2)), \
+                            patch.object(window, '_hide_at_edge') as hide:
+                        window._check_rehide()
+                        hide.assert_called_once_with(edge)
             window.close()
             hotkey.return_value.close.assert_called_once()
 
@@ -266,9 +314,10 @@ class NoteTests(unittest.TestCase):
             store = NoteStore(directory)
             first = store.create_note('原始内容')
             second = store.create_note('后创建的便签')
+            original_order = [n['id'] for n in store.load_notes()]
             updated = store.update_note(first['id'], '修改后\n多行')
             self.assertEqual(updated['created_at'], first['created_at'])
-            self.assertEqual([n['id'] for n in store.load_notes()], [second['id'], first['id']])
+            self.assertEqual([n['id'] for n in store.load_notes()], original_order)
             records = [json.loads(line) for line in store.log_path.read_text(encoding='utf-8').splitlines()]
             self.assertEqual(records[0]['content'], '原始内容')
             self.assertEqual(records[-1]['before_content'], '原始内容')
@@ -281,7 +330,7 @@ class NoteTests(unittest.TestCase):
             with patch('os.replace', side_effect=PermissionError('blocked')):
                 with self.assertRaises(OSError):
                     store.update_note(first['id'], '不能提交')
-            self.assertEqual(store.load_notes()[1]['content'], '修改后\n多行')
+            self.assertEqual(next(n for n in store.load_notes() if n['id'] == first['id'])['content'], '修改后\n多行')
 
     def test_pin_date_archive_delete_and_history(self):
         import csv
