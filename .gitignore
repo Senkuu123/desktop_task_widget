@@ -6,3 +6,9 @@ __pycache__/
 dist/
 build/
 *.log
+# 本机便签数据及迁移备份
+notes_log.jsonl
+notes_log.legacy.jsonl
+notes_export.csv
+notes_log.lock
+notes_archive.sqlite3*

@@ -10,7 +10,7 @@ import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
-from PyQt5.QtCore import Qt, QEvent, QPoint, QPointF
+from PyQt5.QtCore import Qt, QEvent, QPoint, QPointF, QCoreApplication
 from PyQt5.QtGui import QInputMethodEvent, QMouseEvent
 from PyQt5.QtTest import QTest
 from PyQt5.QtWidgets import QApplication
@@ -36,18 +36,56 @@ class NoteTests(unittest.TestCase):
             self.assertEqual({r['id'] for r in records}, {first['id'], second['id']})
             self.assertTrue(all(r['created_at'] for r in records))
 
-    def test_blank_rejected_and_log_failure_recoverable(self):
+    def tearDown(self):
+        # 主动销毁测试创建的Qt窗口，避免带应用事件过滤器的窗口留到解释器退出。
+        for widget in self.app.topLevelWidgets():
+            widget.hide()
+            widget.deleteLater()
+        QCoreApplication.sendPostedEvents(None, QEvent.DeferredDelete)
+
+    def test_blank_rejected_and_write_failure_preserves_file(self):
         with tempfile.TemporaryDirectory() as directory:
             store = NoteStore(directory)
             with self.assertRaises(ValueError):
                 store.create_note(' \n ')
+            store.create_note('原记录')
+            before = store.log_path.read_bytes()
             with patch('os.replace', side_effect=PermissionError('blocked')):
-                note = store.create_note('日志失败仍保存')
+                with self.assertRaises(OSError):
+                    store.create_note('不能提交')
+            self.assertEqual(store.log_path.read_bytes(), before)
+            self.assertEqual(len(NoteStore(directory).load_notes()), 1)
+
+    def test_csv_failure_does_not_undo_commit_and_corruption_is_preserved(self):
+        with tempfile.TemporaryDirectory() as directory:
+            store = NoteStore(directory)
+            original = store._atomic_write
+            def fail_csv(path, text, encoding='utf-8'):
+                if path == store.csv_path:
+                    raise PermissionError('CSV is open')
+                return original(path, text, encoding)
+            with patch.object(store, '_atomic_write', side_effect=fail_csv):
+                note = store.create_note('已提交正文')
                 self.assertTrue(store.log_error)
-            recovered = NoteStore(directory)
-            self.assertEqual([n['id'] for n in recovered.load_notes()], [note['id']])
-            self.assertIsNone(recovered.log_error)
-            self.assertTrue((Path(directory) / 'notes_log.jsonl').is_file())
+            self.assertEqual(store.load_notes()[0]['id'], note['id'])
+            self.assertIsNone(store.log_error)
+            store.log_path.write_text('{broken', encoding='utf-8')
+            with self.assertRaises(ValueError):
+                store.create_note('不能覆盖损坏文件')
+            self.assertEqual(store.log_path.read_text(encoding='utf-8'), '{broken')
+
+    def test_empty_legacy_database_and_log_migrate(self):
+        with tempfile.TemporaryDirectory() as directory:
+            database = Path(directory) / 'notes_archive.sqlite3'
+            with closing(sqlite3.connect(database)) as connection:
+                connection.execute('CREATE TABLE notes(id TEXT, created_at TEXT, content TEXT)')
+                connection.commit()
+            (Path(directory) / 'notes_log.jsonl').write_text('', encoding='utf-8')
+            store = NoteStore(directory)
+            self.assertEqual(store.load_notes(), [])
+            store.create_note('首次便签')
+            self.assertEqual(len(store.load_notes()), 1)
+            self.assertTrue((Path(directory) / 'notes_log.legacy.jsonl').exists())
 
     def test_enter_shift_enter_and_ime(self):
         saved = []
@@ -117,7 +155,15 @@ class NoteTests(unittest.TestCase):
             self.assertEqual(bar.indexOf(window.content_page_btn), bar.indexOf(window.add_button) + 1)
             self.assertEqual(bar.indexOf(window.water_page_btn), bar.indexOf(window.content_page_btn) + 1)
             self.assertIn('暂无便签', window.notes_status.text())
-            window.save_quick_note('界面保存测试')
+            original_create = window.note_store.create_note
+            original_load = window.note_store.load_notes
+            def commit_then_block_reload(content):
+                note = original_create(content)
+                window.note_store.load_notes = lambda: (_ for _ in ()).throw(OSError('reload blocked'))
+                return note
+            with patch.object(window.note_store, 'create_note', side_effect=commit_then_block_reload):
+                window.save_quick_note('界面保存测试')
+            window.note_store.load_notes = original_load
             self.app.processEvents()
             self.assertEqual(window.current_page, 'notes')
             self.assertEqual(window.task_list_widget.count(), 1)
@@ -167,6 +213,28 @@ class NoteTests(unittest.TestCase):
             long_card.begin_edit()
             self.app.processEvents()
             self.assertTrue(window.task_list_widget.visualItemRect(long_card.item).intersects(window.task_list_widget.viewport().rect()))
+            long_card.cancel()
+            menu = window.note_actions.menu(long_card)
+            self.assertEqual([action.text() for action in menu.actions() if not action.isSeparator()],
+                             ['编辑', '置顶', '弹出浮窗', '归档', '更多', '删除'])
+            self.assertEqual([a.text() for a in menu.actions()[4].menu().actions()], ['显示历史版本', '修改日期'])
+            menu.deleteLater()
+            note_id = long_card.note['id']
+            original_count = len(window.notes)
+            window.note_actions.open_popup(note_id)
+            popup = window.note_actions.popups[note_id]
+            popup.editor.setPlainText('浮窗修改正文')
+            popup.submit()
+            self.app.processEvents()
+            self.assertEqual(len(window.notes), original_count)
+            self.assertEqual(next(n for n in window.notes if n['id'] == note_id)['content'], '浮窗修改正文')
+            self.assertNotIn(note_id, window.note_drafts)
+            window.note_actions.mutate(note_id, 'pin', True)
+            self.assertEqual(window.notes[0]['id'], note_id)
+            window.note_actions.mutate(note_id, 'date', '2020-01-02T03:04:05+08:00')
+            self.assertIn('2020-01-02 03:04', window.note_cards[note_id].time_label.text())
+            window.note_actions.mutate(note_id, 'archive')
+            self.assertNotIn(note_id, window.note_cards)
             window.close()
             hotkey.return_value.close.assert_called_once()
 
@@ -187,12 +255,58 @@ class NoteTests(unittest.TestCase):
                 store.update_note(first['id'], '  ')
             with self.assertRaises(ValueError):
                 store.update_note('missing', '正文')
-            with closing(sqlite3.connect(store.archive_path)) as connection:
-                connection.execute("CREATE TRIGGER reject_edit BEFORE INSERT ON edit_log BEGIN SELECT RAISE(ABORT, 'blocked'); END")
-                connection.commit()
-            with self.assertRaises(sqlite3.Error):
-                store.update_note(first['id'], '不能提交')
+            with patch('os.replace', side_effect=PermissionError('blocked')):
+                with self.assertRaises(OSError):
+                    store.update_note(first['id'], '不能提交')
             self.assertEqual(store.load_notes()[1]['content'], '修改后\n多行')
+
+    def test_pin_date_archive_delete_and_history(self):
+        import csv
+        with tempfile.TemporaryDirectory() as directory:
+            store = NoteStore(directory)
+            first = store.create_note('原内容')
+            second = store.create_note('第二条')
+            store.set_pinned(first['id'], True)
+            self.assertEqual(store.load_notes()[0]['id'], first['id'])
+            store.change_date(first['id'], '2020-01-02T03:04:05+08:00')
+            self.assertEqual(store.load_notes()[0]['created_at'], first['created_at'])
+            store.set_pinned(first['id'], False)
+            self.assertEqual(store.load_notes()[0]['id'], second['id'])
+            store.update_note(first['id'], '修改内容')
+            self.assertEqual([v['content'] for v in store.history(first['id'])], ['原内容', '修改内容'])
+            store.archive_note(first['id'])
+            store.delete_note(second['id'])
+            self.assertEqual(NoteStore(directory).load_notes(), [])
+            events = [json.loads(line) for line in store.log_path.read_text(encoding='utf-8').splitlines()]
+            archived = next(e for e in events if e['action'] == 'archive')
+            self.assertTrue(archived['archived_at'])
+            self.assertEqual(archived['content'], '修改内容')
+            with (Path(directory) / 'notes_export.csv').open(encoding='utf-8-sig', newline='') as stream:
+                rows = list(csv.DictReader(stream))
+            self.assertNotIn(first['id'], [r['id'] for r in rows])
+            self.assertTrue(rows[0]['deleted_at'])
+            self.assertFalse((Path(directory) / 'notes_archive.sqlite3').exists())
+
+    def test_legacy_migration_read_only_and_idempotent(self):
+        with tempfile.TemporaryDirectory() as directory:
+            database = Path(directory) / 'notes_archive.sqlite3'
+            with closing(sqlite3.connect(database)) as connection:
+                connection.executescript("""
+                    CREATE TABLE notes(id TEXT, created_at TEXT, content TEXT);
+                    CREATE TABLE creation_log(id TEXT, created_at TEXT, content TEXT);
+                    CREATE TABLE edit_log(id TEXT, edited_at TEXT, before_content TEXT, content TEXT);
+                    INSERT INTO notes VALUES ('one','2026-09-09T10:00:00+08:00','新正文');
+                    INSERT INTO creation_log VALUES ('one','2026-09-09T10:00:00+08:00','旧正文');
+                    INSERT INTO edit_log VALUES ('one','2026-09-09T11:00:00+08:00','旧正文','新正文');
+                """)
+                connection.commit()
+            original = database.read_bytes()
+            store = NoteStore(directory)
+            self.assertEqual(store.load_notes()[0]['content'], '新正文')
+            self.assertEqual([v['content'] for v in store.history('one')], ['旧正文', '新正文'])
+            store.archive_note('one')
+            self.assertEqual(NoteStore(directory).load_notes(), [])
+            self.assertEqual(database.read_bytes(), original)
 
     def test_outside_deactivation_preserves_draft_and_pin(self):
         dialog = QuickNoteDialog(lambda content: None)

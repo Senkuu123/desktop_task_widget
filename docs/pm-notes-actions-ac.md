@@ -1,0 +1,12 @@
+# 便签操作验收要求（2026-09-10用户修订已确认）
+- 新系统不使用数据库，以notes_log.jsonl为唯一事件主文件。读写原子、带锁，失败不得损坏或覆盖旧记录。
+- 旧SQLite只读迁移并保留原文件、创建时间和历史。旧JSONL迁移前备份。新格式存在后不可重复迁移。
+- create_note/update_note/load_notes保持原接口；增加set_pinned/change_date/archive_note/delete_note/history。
+- 每个事件含schema_version、event_id、id、action、occurred_at、created_at、display_at、updated_at、content、pinned、archived_at、deleted_at，编辑含before_content。
+- 归档在JSONL记录归档时间和正文，从默认列表隐藏。不提供归档列表、恢复归档，CSV也不导出归档便签。
+- 删除为软删除，留日志，默认隐藏；CSV可包含deleted_at供看板过滤。
+- 修改展示日期和时间，不改变真实创建时间。置顶优先、展示时间倒序，排序稳定。
+- 历史展示create/edit正文版本和操作时间。浮窗修改同一便签，不增加副本，与新建草稿隔离。
+- 卡片右侧菜单：编辑、置顶（已置顶时取消置顶）、弹出浮窗、归档、更多（显示历史版本、修改日期）、删除。括号不在文案中，删除红色。
+- JSONL为主文件，CSV是可重建的BOM UTF-8导出快照。CSV失败仅log_error；主文件写失败抛异常，保留旧文件。
+- 更新打包py和说明，临时目录测试不接触用户数据。

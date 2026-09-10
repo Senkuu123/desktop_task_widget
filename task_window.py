@@ -11,6 +11,7 @@ from quick_notes.store import NoteStore
 from quick_notes.dialog import QuickNoteDialog
 from quick_notes.hotkey import NoteHotkey
 from quick_notes.card import NoteCard
+from quick_notes.actions import NoteActions
 from storage import get_data_dir
 from task import Task
 from habit import Habit
@@ -1030,6 +1031,7 @@ class TransparentTaskWindow(QWidget):
         self.habits = []
         self.notes = []
         self.note_cards = {}
+        self.note_actions = NoteActions(self)
         self.note_drafts = {}
         self.note_store = None
         self.note_load_error = False
@@ -1089,7 +1091,7 @@ class TransparentTaskWindow(QWidget):
         self.last_cursor_pos = None
         self.last_cursor_shape = Qt.ArrowCursor
         
-        self.setMinimumSize(300, 400)
+        self.setMinimumSize(300, 267)
         self.setMaximumSize(800, 1200)
         
         # 先设置基本窗口属性，再初始化UI
@@ -1807,6 +1809,7 @@ class TransparentTaskWindow(QWidget):
     def closeEvent(self, event):
         """窗口关闭事件 - 保存设置"""
         self.note_hotkey.close()
+        self.note_actions.close()
         if self.note_dialog:
             self.note_dialog.close()
         print("📝 窗口关闭中，正在保存设置...")
@@ -2090,6 +2093,8 @@ class TransparentTaskWindow(QWidget):
             self.note_load_error = True
 
     def refresh_notes_display(self):
+        if list(self.note_cards) != [note['id'] for note in self.notes]:
+            self.note_cards.clear()
         if not self.note_cards:
             self.task_list_widget.clear()
             self.task_widgets.clear()
@@ -2100,7 +2105,7 @@ class TransparentTaskWindow(QWidget):
         else:
             status = ''
         if self.note_store and self.note_store.log_error:
-            status += '\n便签已存档，日志导出失败；下次打开便签列表时重试。'
+            status += '\n便签已保存，CSV导出失败；下次打开便签列表时重试。'
         self.notes_status.setText(status)
         self.notes_status.setVisible(bool(status))
         for index, note in enumerate(self.notes):
@@ -2117,6 +2122,8 @@ class TransparentTaskWindow(QWidget):
             elif not card.is_editing:
                 card.note = dict(note)
                 card.content_label.setText(note['content'])
+                card.item.setData(Qt.UserRole, note)
+                card.update_metadata()
             card.sync_size()
 
     def resize_note_cards(self):
@@ -2124,12 +2131,16 @@ class TransparentTaskWindow(QWidget):
             for card in self.note_cards.values():
                 card.sync_size()
 
+    def apply_note_state(self, updated):
+        self.notes = [note for note in self.notes if note['id'] != updated['id']]
+        if not updated.get('archived_at') and not updated.get('deleted_at'):
+            self.notes.append(updated)
+        self.notes.sort(key=lambda note: (note.get('pinned', False),
+                        datetime.fromisoformat(note.get('display_at', note['created_at'])), note['id']), reverse=True)
+
     def update_inline_note(self, note_id, content):
         updated = self.note_store.update_note(note_id, content)
-        for index, note in enumerate(self.notes):
-            if note['id'] == note_id:
-                self.notes[index] = updated
-                break
+        self.apply_note_state(updated)
         QTimer.singleShot(0, self.refresh_task_display)
         return updated
 
@@ -2150,7 +2161,7 @@ class TransparentTaskWindow(QWidget):
         if self.note_load_error:
             raise OSError('便签存档不可读')
         note = self.note_store.create_note(content)
-        self.notes.insert(0, note)
+        self.apply_note_state(note)
         # 写入成功后刷新界面，避免显示异常被误认为保存失败而重复提交。
         QTimer.singleShot(0, self.show_saved_notes)
 
@@ -2170,7 +2181,7 @@ class TransparentTaskWindow(QWidget):
         self.note_toast.show()
         self.note_toast_timer.start(1600)
         if self.note_store.log_error:
-            QMessageBox.warning(self, '便签已存档', '日志文件暂时无法导出。便签已保存在数据库中，重新打开便签列表会重试导出。')
+            QMessageBox.warning(self, '便签已保存', 'CSV文件暂时无法导出。便签已保存在JSONL文件中，重新打开便签列表会重试导出。')
 
     def show_note_hotkey_warning(self):
         QMessageBox.warning(self, '便签快捷键不可用',

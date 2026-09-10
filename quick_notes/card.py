@@ -31,9 +31,20 @@ class NoteCard(QWidget):
         layout = QVBoxLayout(self.surface)
         layout.setContentsMargins(12, 12, 12, 12)
         layout.setSpacing(8)
-        created = datetime.fromisoformat(note['created_at']).astimezone().strftime('%Y-%m-%d %H:%M')
-        self.time_label = QLabel(created)
-        layout.addWidget(self.time_label)
+        self.meta = QWidget()
+        meta_row = QHBoxLayout(self.meta)
+        meta_row.setContentsMargins(0, 0, 0, 0)
+        self.time_label = QLabel()
+        meta_row.addWidget(self.time_label)
+        meta_row.addStretch()
+        self.menu_button = QPushButton('···')
+        self.menu_button.setFixedSize(28, 24)
+        self.menu_button.setToolTip('便签操作')
+        self.menu_button.setAccessibleName('便签操作')
+        self.menu_button.clicked.connect(self.show_menu)
+        meta_row.addWidget(self.menu_button)
+        layout.addWidget(self.meta)
+        self.update_metadata()
         self.content_label = QLabel(note['content'])
         self.content_label.setTextFormat(Qt.PlainText)
         self.content_label.setWordWrap(True)
@@ -85,8 +96,17 @@ class NoteCard(QWidget):
         self.editor.hide()
         self.toolbar.hide()
         self.update_text_style()
-        if note['id'] in owner.note_drafts:
+        if note['id'] in owner.note_drafts and note['id'] not in owner.note_actions.popups:
             self.begin_edit(focus=False)
+
+    def update_metadata(self):
+        displayed = datetime.fromisoformat(self.note.get('display_at', self.note['created_at'])).astimezone()
+        self.time_label.setText(('置顶 · ' if self.note.get('pinned') else '') + displayed.strftime('%Y-%m-%d %H:%M'))
+
+    def show_menu(self):
+        menu = self.owner.note_actions.menu(self)
+        menu.exec_(self.menu_button.mapToGlobal(self.menu_button.rect().bottomLeft()))
+        menu.deleteLater()
 
     def update_text_style(self):
         alpha = int(255 * self.owner.current_font_opacity / 100)
@@ -122,10 +142,11 @@ class NoteCard(QWidget):
         return super().eventFilter(watched, event)
 
     def begin_edit(self, focus=True):
+        self.owner.note_actions.take_inline(self.note['id'])
         if not self.is_editing:
             self.is_editing = True
             self.editor.setPlainText(self.owner.note_drafts.get(self.note['id'], self.note['content']))
-            self.time_label.hide()
+            self.meta.hide()
             self.content_label.hide()
             self.editor.show()
             self.toolbar.show()
@@ -173,7 +194,8 @@ class NoteCard(QWidget):
         self.editor.hide()
         self.toolbar.hide()
         self.error.hide()
-        self.time_label.show()
+        self.update_metadata()
+        self.meta.show()
         self.content_label.setText(self.note['content'])
         self.content_label.show()
         self.update_text_style()

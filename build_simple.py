@@ -26,6 +26,8 @@ def check_required_files():
         'quick_notes/__init__.py',
         'quick_notes/dialog.py',
         'quick_notes/card.py',
+        'quick_notes/actions.py',
+        'quick_notes/legacy.py',
         'quick_notes/hotkey.py',
         'quick_notes/store.py',
         'app_icon.ico',
