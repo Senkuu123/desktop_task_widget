@@ -235,6 +235,29 @@ class NoteTests(unittest.TestCase):
             self.assertIn('2020-01-02 03:04', window.note_cards[note_id].time_label.text())
             window.note_actions.mutate(note_id, 'archive')
             self.assertNotIn(note_id, window.note_cards)
+            window.show_page('water')
+            window.resize(300, 280)
+            self.app.processEvents()
+            self.assertEqual(window.minimumHeight(), 280)
+            self.assertFalse(window.task_list_widget.isVisible())
+            water = window.water_widget
+            water.water.today_logs = [{'time': '10:20', 'type': '喝一杯', 'amount': 250}]
+            water._rebuild_log()
+            for expanded in (True, False):
+                water.log_container.setVisible(expanded)
+                water.fit_available_height()
+                self.app.processEvents()
+                for widget in (water.title_label, water.progress_bar, water.reminder_time_label, water._btn_row_widget):
+                    self.assertTrue(widget.isVisible())
+                    bottom = widget.mapTo(water, widget.rect().bottomRight())
+                    self.assertLess(bottom.y(), water.height())
+            window.water_page_btn.click()
+            self.assertEqual(window.current_page, 'habits')
+            self.assertFalse(water.isVisible())
+            self.assertTrue(window.task_list_widget.isVisible())
+            self.assertEqual(window.water_page_btn.accessibleName(), '习惯列表')
+            window.water_page_btn.click()
+            self.assertEqual(window.current_page, 'water')
             window.close()
             hotkey.return_value.close.assert_called_once()
 

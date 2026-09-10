@@ -62,14 +62,21 @@ class WaterDisplayWidget(QWidget):
         self._refresh_timer.start(30000)
 
     def _build_ui(self):
-        root = QVBoxLayout(self)
-        root.setContentsMargins(10, 8, 10, 8)
-        root.setSpacing(6)
+        self.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Ignored)
+        self.panel_layout = QVBoxLayout(self)
+        self.panel_layout.setContentsMargins(10, 6, 10, 6)
+        self.panel_layout.setSpacing(0)
+        self.core = QWidget()
+        root = QVBoxLayout(self.core)
+        root.setContentsMargins(0, 0, 0, 0)
+        root.setSpacing(4)
+        self.panel_layout.addWidget(self.core)
 
         # Title row
         top = QHBoxLayout()
         top.setSpacing(6)
         title = QLabel("今日饮水进度")
+        self.title_label = title
         title.setStyleSheet("color: rgba(255,255,255,0.9); font-size: 10pt; font-weight: 600;")
         top.addWidget(title)
         top.addStretch()
@@ -111,6 +118,7 @@ class WaterDisplayWidget(QWidget):
 
         # Separator
         sep = QLabel()
+        self.summary_separator = sep
         sep.setFixedHeight(1)
         sep.setStyleSheet("background: rgba(255,255,255,0.08);")
         root.addWidget(sep)
@@ -172,6 +180,8 @@ class WaterDisplayWidget(QWidget):
         # Log panel (collapsible, inserted into layout after buttons)
         self.log_container = QWidget()
         self.log_container.setVisible(False)
+        self.log_container.setMinimumHeight(0)
+        self.log_container.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Ignored)
         log_inner = QVBoxLayout(self.log_container)
         log_inner.setContentsMargins(0, 0, 0, 0)
         log_inner.setSpacing(0)
@@ -179,7 +189,8 @@ class WaterDisplayWidget(QWidget):
         self.log_scroll.setWidgetResizable(True)
         self.log_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self.log_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
-        self.log_scroll.setFixedHeight(96)
+        self.log_scroll.setMinimumHeight(0)
+        self.log_scroll.setMaximumHeight(96)
         self.log_scroll.setStyleSheet("""
             QScrollArea { background: transparent; border: none; border-radius: 6px; }
             QScrollArea > QWidget > QWidget { background: transparent; }
@@ -196,9 +207,28 @@ class WaterDisplayWidget(QWidget):
         self.log_entries_layout.setSpacing(0)
         self.log_scroll.setWidget(self.log_entries_widget)
         log_inner.addWidget(self.log_scroll)
-        root.addWidget(self.log_container)
+        self.panel_layout.addWidget(self.log_container, 1)
+        self.panel_layout.addStretch(0)
 
         self._update_all()
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self.fit_available_height()
+
+    def fit_available_height(self):
+        if not hasattr(self, 'log_container'):
+            return
+        # 核心操作区不参与压缩，先让记录区缩小，极小时收起次要统计。
+        for widget in (self.intake_label, self.progress_stats, self.summary_separator):
+            widget.show()
+        self.core.layout().invalidate()
+        available = max(0, self.height() - 12)
+        if self.core.sizeHint().height() > available:
+            for widget in (self.intake_label, self.progress_stats, self.summary_separator):
+                widget.hide()
+            self.core.layout().invalidate()
+        self.core.setFixedHeight(self.core.sizeHint().height())
 
     def _update_all(self):
         self._update_intake()
@@ -1043,6 +1073,7 @@ class TransparentTaskWindow(QWidget):
         self.window_background_opacity = 0.8
         self.current_page = 'tasks'
         self.last_content_page = 'tasks'
+        self.last_water_page = 'water'
         self.notified_task_ids = set()  # 已弹窗提醒的任务ID集合
         self.water_reminder = load_water_reminder()
         self.water_widget = None
@@ -1091,7 +1122,7 @@ class TransparentTaskWindow(QWidget):
         self.last_cursor_pos = None
         self.last_cursor_shape = Qt.ArrowCursor
         
-        self.setMinimumSize(300, 267)
+        self.setMinimumSize(300, 280)
         self.setMaximumSize(800, 1200)
         
         # 先设置基本窗口属性，再初始化UI
@@ -1179,10 +1210,10 @@ class TransparentTaskWindow(QWidget):
         list_layout.setContentsMargins(5, 5, 5, 5)  # 容器边距
         list_layout.setSpacing(0)  # 容器内无间距
 
-        # 饮水小组件（习惯页顶部固定显示）
+        # 饮水独立页，习惯任务使用下方独立列表
         self.water_widget = WaterDisplayWidget(self.water_reminder, self)
         self.water_widget.setVisible(False)
-        list_layout.addWidget(self.water_widget, 0)
+        list_layout.addWidget(self.water_widget, 1)
 
         self.notes_status = QLabel()
         self.notes_status.setWordWrap(True)
@@ -1247,7 +1278,7 @@ class TransparentTaskWindow(QWidget):
         self.water_page_btn.setFixedSize(25, 25)
         self.water_page_btn.setToolTip('饮水小助手')
         self.water_page_btn.setAccessibleName('饮水小助手')
-        self.water_page_btn.clicked.connect(lambda: self.show_page('habits'))
+        self.water_page_btn.clicked.connect(self.toggle_water_page)
         self.water_page_btn.setIcon(self.create_water_cup_icon())
 
         # 按钮配置
@@ -1482,7 +1513,16 @@ class TransparentTaskWindow(QWidget):
         target = '快捷便签' if self.last_content_page == 'tasks' else '待办事项'
         self.content_page_btn.setText(icon)
         self.content_page_btn.setAccessibleName(label)
-        self.content_page_btn.setToolTip(f'返回{label}' if self.current_page == 'habits' else f'切换到{target}')
+        self.content_page_btn.setToolTip(f'返回{label}' if self.current_page in ('water', 'habits') else f'切换到{target}')
+        if self.current_page in ('water', 'habits'):
+            self.last_water_page = self.current_page
+        is_habits = self.last_water_page == 'habits'
+        self.water_page_btn.setIcon(self.create_habit_icon() if is_habits else self.create_water_cup_icon())
+        self.water_page_btn.setAccessibleName('习惯列表' if is_habits else '饮水小助手')
+        self.water_page_btn.setToolTip(('切换到饮水小助手' if is_habits else '切换到习惯列表')
+                                     if self.current_page in ('water', 'habits') else ('打开习惯列表' if is_habits else '打开饮水小助手'))
+        self.task_list_widget.setVisible(self.current_page != 'water')
+        self.water_widget.setVisible(self.current_page == 'water')
         if self.current_page != 'notes':
             self.note_cards.clear()
             self.notes_status.hide()
@@ -1493,9 +1533,11 @@ class TransparentTaskWindow(QWidget):
             self.water_widget.setVisible(False)
             self.refresh_notes_display()
             return
-        if self.current_page == 'habits':
-            self.water_widget.setVisible(True)
+        if self.current_page == 'water':
             self.water_widget.update_countdown()
+            self.water_widget.fit_available_height()
+            return
+        if self.current_page == 'habits':
             self.refresh_habit_display()
             return
         self.water_widget.setVisible(False)
@@ -2057,8 +2099,36 @@ class TransparentTaskWindow(QWidget):
         painter.end()
         return QIcon(pixmap)
 
+    @staticmethod
+    def create_habit_icon():
+        pixmap = QPixmap(40, 40)
+        pixmap.fill(Qt.transparent)
+        painter = QPainter(pixmap)
+        painter.setRenderHint(QPainter.Antialiasing)
+        painter.setPen(Qt.NoPen)
+        painter.setBrush(QColor('#3287d7'))
+        painter.drawRoundedRect(2, 2, 36, 36, 6, 6)
+        painter.setBrush(Qt.NoBrush)
+        painter.setPen(QPen(Qt.white, 3))
+        painter.drawArc(10, 10, 20, 20, 35 * 16, 265 * 16)
+        arrow = QPainterPath()
+        arrow.moveTo(29, 9)
+        arrow.lineTo(30, 17)
+        arrow.lineTo(22, 15)
+        painter.fillPath(arrow, Qt.white)
+        painter.end()
+        return QIcon(pixmap)
+
+    def toggle_water_page(self):
+        if self.current_page == 'water':
+            self.show_page('habits')
+        elif self.current_page == 'habits':
+            self.show_page('water')
+        else:
+            self.show_page(self.last_water_page)
+
     def toggle_content_page(self):
-        if self.current_page == 'habits':
+        if self.current_page in ('water', 'habits'):
             self.show_page(self.last_content_page)
         else:
             self.show_page('notes' if self.current_page == 'tasks' else 'tasks')
@@ -2078,6 +2148,8 @@ class TransparentTaskWindow(QWidget):
             self.show_quick_note()
         elif self.current_page == 'tasks':
             self.show_add_task_dialog()
+        elif self.current_page == 'water':
+            self.water_widget.show_settings()
         else:
             self.show_add_habit_dialog()
 
