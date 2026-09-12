@@ -130,3 +130,10 @@ For multi-step tasks, state a brief plan:
 - `src/`为现用源码，图标资源位于`src/resources/`；`tools/build/`为打包脚本、spec与Windows元数据；`tools/tests/`为自动测试及`manual/`专项验证；`docs/`为文档；`archive/`为历史文件。
 - 日常入口和完整目录说明以根目录README及`docs/directory-guide.md`为准。发布目录固定`dist/quick-notes/`，源码数据仍位于项目根目录，现有虚拟环境不搬迁。
 - Git只忽略具体缓存目录，不能用`build/`这种匹配所有层级的规则，否则会漏收`tools/build/`中的打包源码。
+
+### 主窗口代码定位
+
+- `src/task_window.py`仅为兼容入口。涉及主窗口时先读`src/window_parts/README.md`，按功能与关键方法定位，再读取相关模块；不要默认整包通读。
+- 初始化与配置在`window.py`，布局在`layout.py`，拖动缩放在`interaction.py`，贴边动画在`edge_hide.py`，任务／习惯／便签分别在`tasks.py`、`habits.py`、`notes.py`；各控件和设置窗口有独立模块。
+- 原方法名、信号和定时器时序保持兼容。Mixin无构造函数，初始化集中在主窗口；任务行只在父窗口查找时局部导入主窗口类，避免循环导入。
+- 测试patch须指向函数实际所属模块，数据使用临时目录。Windows贴边动画专项入口为`tools/tests/manual/verify_window_edges.py`。

@@ -88,6 +88,8 @@ Windows桌面悬浮任务管理工具。
 
 测试命令：`.venv\Scripts\python.exe -X utf8 -m unittest discover -s tools/tests -v`。测试使用临时数据目录，不修改实际任务和便签。
 
+主窗口代码已按功能拆入`src/window_parts/`，修改前查看[功能与代码索引](../src/window_parts/README.md)。Windows贴边动画及定时器验证：`.venv\Scripts\python.exe -X utf8 tools/tests/manual/verify_window_edges.py`，该脚本使用真实窗口及注入的鼠标逻辑坐标。
+
 当前打包产物：`dist/quick-notes/DesktopTaskWidget.exe`。先退出旧版再运行，与同目录旧版共用数据。Windows弹窗焦点验证：`.venv\Scripts\python.exe -X utf8 tools/tests/manual/verify_note_popup.py`。快捷键专项验证：`.venv\Scripts\python.exe -X utf8 tools/tests/manual/verify_note_hotkey.py`。
 
 ## 项目目录

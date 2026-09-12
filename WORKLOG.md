@@ -192,3 +192,20 @@
 - 整理前、首轮及最终布局均通过现有14项测试；最终23文件语法、跨工作目录导入、数据／图标／冻结路径、临时目录生成资源及文档链接检查通过。PyInstaller实际构建和TOC核对确认18个现用模块及移动后资源完整入包，工具和归档脚本未入包。
 - 最终验证exe：tools/build/cache/layout-verification/dist/DesktopTaskWidget.exe。沙箱内创建新缓存曾遇WinError 5，同一构建命令获自动批准在沙箱外完成。未启动验证exe或重复Windows专项交互测试，原发布exe未覆盖。
 - 代码审查发现build/忽略模式会漏收tools/build源码，已改为精确缓存路径；第二轮复核通过。git diff --check通过。未创建Git提交。
+
+## 2026-09-12 17:10
+
+完成task_window.py拆分前分析，方案见docs/task-window-split-plan.md，待用户确认实施。
+- 当前2724行、6类，主窗口81个方法；基线3e3e66c，14项现有测试通过，运行代码未修改。
+- 拟保留task_window兼容入口，按职责拆入window_parts，多数文件约80至370行；逐方法核对迁移，保持初始化和定时器顺序。
+- 已识别父窗口类型判断的循环导入风险、测试patch目标迁移，以及SettingsDialog重复同名方法需保留现有覆盖顺序。
+
+## 2026-09-12 22:32
+
+完成主窗口模块拆分与正式打包。
+- src/task_window.py由2724行缩至35行，保留六类兼容导出及直接运行入口；实现分入src/window_parts的12个功能模块，另含包标记，最长369行。功能与关键方法索引见src/window_parts/README.md。
+- 对照3e3e66c逐项核对133个方法AST、类信号和入口；仅任务行父窗口查找增加局部导入以避免循环依赖，其余方法逻辑保持。185个公共依赖绑定核对通过。
+- 打包脚本加入13个包文件检查；隔离构建及正式构建成功，31个运行源码全部入包，工具及归档未入包。正式程序已更新：dist/quick-notes/DesktopTaskWidget.exe；旧exe备份：tools/build/cache/window-split/DesktopTaskWidget.before-split.exe。发布目录8个数据文件修改时间仍早于本次构建，未启动正式exe。
+- 19项自动测试通过；Windows真实窗口、动画与定时器验证左／右／上三边隐藏恢复、持续悬停和移出隐藏，每边11次悬停检测通过。鼠标采用注入逻辑坐标，不等同于用户现场鼠标验证。
+- 审查发现测试跨午夜可能写真实饮水日志，已将两处fixture的数据目录及六个路径常量重定向临时目录，并增加真实跨日写入测试；第二轮复审通过。38个py语法检查通过。
+- README、AGENTS及目录说明同步，后续AI按索引读取相关模块。未创建Git提交，保留原IDE修改。

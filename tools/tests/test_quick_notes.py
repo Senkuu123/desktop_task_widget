@@ -18,6 +18,8 @@ from PyQt5.QtTest import QTest
 from PyQt5.QtWidgets import QApplication
 from quick_notes.store import NoteStore
 from quick_notes.dialog import QuickNoteDialog
+from water_reminder import WaterReminder
+import storage
 
 
 class NoteTests(unittest.TestCase):
@@ -126,16 +128,25 @@ class NoteTests(unittest.TestCase):
         dialog.close()
 
     def test_window_navigation_and_saved_note(self):
-        import task_window
+        from window_parts import window as task_window
+        from window_parts import notes as notes_module
+        from window_parts import edge_hide as edge_module
         with tempfile.TemporaryDirectory() as directory, \
-                patch.object(task_window, 'get_data_dir', return_value=directory), \
+                patch.object(storage, 'get_data_dir', return_value=directory), \
+                patch.multiple(storage, **{
+                    name: str(Path(directory) / filename) for name, filename in (
+                        ('TASKS_FILE', 'tasks.json'), ('SETTINGS_FILE', 'settings.json'),
+                        ('HABITS_FILE', 'habits.json'), ('WATER_FILE', 'water.json'),
+                        ('WATER_LOG_FILE', 'water_log.json'), ('HABIT_LOG_FILE', 'habit_log.json'))
+                }), \
+                patch.object(notes_module, 'get_data_dir', return_value=directory), \
                 patch.object(task_window, 'NoteHotkey') as hotkey, \
                 patch.object(task_window.TransparentTaskWindow, 'load_window_settings'), \
                 patch.object(task_window.TransparentTaskWindow, 'save_window_settings'), \
                 patch.object(task_window.TransparentTaskWindow, 'delayed_task_load'), \
                 patch.object(task_window.TransparentTaskWindow, 'check_autostart_launch'), \
                 patch.object(task_window.TransparentTaskWindow, 'setup_windows_specific'), \
-                patch.object(task_window, 'load_water_reminder', return_value=task_window.WaterReminder()):
+                patch.object(task_window, 'load_water_reminder', return_value=WaterReminder()):
             hotkey.return_value.registered = True
             window = task_window.TransparentTaskWindow()
             self.assertFalse(hasattr(window, 'page_title'))
@@ -273,7 +284,7 @@ class NoteTests(unittest.TestCase):
                     window._current_edge = edge
                     window._should_rehide = True
                     window._pending_hide = False
-                    with patch.object(task_window.QApplication, 'screenAt', return_value=screen):
+                    with patch.object(edge_module.QApplication, 'screenAt', return_value=screen):
                         window._restore_from_edge()
                     target = window._show_anim.endValue()
                     window._show_anim.stop()
@@ -285,7 +296,7 @@ class NoteTests(unittest.TestCase):
                     shifted = restored_geometry.translated(-2, 0) if edge == 'right' else (
                         restored_geometry.translated(2, 0) if edge == 'left' else restored_geometry.translated(0, 2))
                     with patch.object(window, 'geometry', return_value=shifted), \
-                            patch.object(task_window.QCursor, 'pos', return_value=cursor), \
+                            patch.object(edge_module.QCursor, 'pos', return_value=cursor), \
                             patch.object(window, '_hide_at_edge') as hide:
                         for _ in range(5):
                             window._check_rehide()
@@ -294,17 +305,17 @@ class NoteTests(unittest.TestCase):
                     if edge == 'right':
                         rounded_cursor = QPoint(screen_rect.right() + 1, y + 20)
                         self.assertTrue(window._cursor_in_edge_trigger(rounded_cursor))
-                        with patch.object(task_window.QCursor, 'pos', return_value=rounded_cursor), patch.object(window, '_hide_at_edge') as hide:
+                        with patch.object(edge_module.QCursor, 'pos', return_value=rounded_cursor), patch.object(window, '_hide_at_edge') as hide:
                             window._check_rehide()
                             hide.assert_not_called()
                     with patch.object(window, 'geometry', return_value=restored_geometry), \
-                            patch.object(task_window.QCursor, 'pos', return_value=cursor), \
+                            patch.object(edge_module.QCursor, 'pos', return_value=cursor), \
                             patch.object(window, '_hide_at_edge') as hide:
                         for _ in range(5):
                             window._check_rehide()
                         hide.assert_not_called()
                     with patch.object(window, 'geometry', return_value=restored_geometry), \
-                            patch.object(task_window.QCursor, 'pos', return_value=restored_geometry.bottomLeft() + QPoint(-2, 2)), \
+                            patch.object(edge_module.QCursor, 'pos', return_value=restored_geometry.bottomLeft() + QPoint(-2, 2)), \
                             patch.object(window, '_hide_at_edge') as hide:
                         window._check_rehide()
                         hide.assert_called_once_with(edge)

@@ -6,13 +6,15 @@ Windows桌面任务、习惯、饮水提醒和快速便签工具。
 
 | 目录 | 放什么 | 常用入口 |
 |------|--------|----------|
-| [src/](src/) | 现版本18个Python源码文件及图标资源 | [main.py](src/main.py) |
+| [src/](src/) | 现版本31个Python源码文件及图标资源 | [main.py](src/main.py) |
 | [tools/](tools/) | 打包、自动测试、Windows专项检查和维护工具 | [打包脚本](tools/build/build_simple.py) |
 | [docs/](docs/) | 软件使用说明、数据说明、需求记录和目录说明 | [使用说明](docs/user-guide.md)、[完整目录说明](docs/directory-guide.md) |
 | [dist/quick-notes/](dist/quick-notes/) | 日常运行的exe及它的数据 | [DesktopTaskWidget.exe](dist/quick-notes/DesktopTaskWidget.exe) |
 | [archive/](archive/) | 废弃脚本、旧构建缓存、旧导出文件 | [归档说明](archive/README.md) |
 
 `.venv/`是当前使用的Python环境，`venv/`是原有环境。两者包含第三方依赖，保持原位置。`.git/`保存版本历史，`.idea/`保存IDE设置。
+
+修改主窗口前先读[功能与代码索引](src/window_parts/README.md)，按功能查找对应小模块。`src/task_window.py`只保留兼容入口，实际实现位于`src/window_parts/`。
 
 ## 常用操作
 
