@@ -1,6 +1,7 @@
 """便签持久化与键盘流程回归测试，所有数据写入临时目录。"""
 
 import os
+import sys
 os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
 
 import json
@@ -9,6 +10,7 @@ from contextlib import closing
 import tempfile
 import unittest
 from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / 'src'))
 from unittest.mock import patch, Mock
 from PyQt5.QtCore import Qt, QEvent, QPoint, QPointF, QCoreApplication, QRect
 from PyQt5.QtGui import QInputMethodEvent, QMouseEvent

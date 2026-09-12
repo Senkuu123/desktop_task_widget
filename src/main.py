@@ -48,7 +48,7 @@ def resource_path(relative_path):
         # PyInstaller创建临时文件夹，将资源存储在_MEIPASS中
         base_path = sys._MEIPASS
     except Exception:
-        base_path = os.path.abspath(".")
+        base_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'resources')
 
     return os.path.join(base_path, relative_path)
 
@@ -79,9 +79,8 @@ def create_default_icon():
 def load_application_icon():
     """加载应用程序图标 - 优化版本"""
     icon_paths = [
+        resource_path('app_icon.ico'),  # src/resources或PyInstaller资源目录
         'app_icon.ico',  # 当前工作目录
-        os.path.join(os.path.dirname(os.path.abspath(__file__)), 'app_icon.ico'),  # 脚本目录
-        resource_path('app_icon.ico'),  # PyInstaller资源路径
     ]
     
     # 如果是打包的exe，添加exe同目录的图标路径

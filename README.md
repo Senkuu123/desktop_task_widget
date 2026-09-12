@@ -1,106 +1,40 @@
 # 桌面任务小组件
 
-Windows桌面悬浮任务管理工具。
+Windows桌面任务、习惯、饮水提醒和快速便签工具。
 
-## 启动
+## 目录导航
 
-双击 `DesktopTaskWidget.exe` 运行。首次启动会在同目录生成数据文件。
+| 目录 | 放什么 | 常用入口 |
+|------|--------|----------|
+| [src/](src/) | 现版本18个Python源码文件及图标资源 | [main.py](src/main.py) |
+| [tools/](tools/) | 打包、自动测试、Windows专项检查和维护工具 | [打包脚本](tools/build/build_simple.py) |
+| [docs/](docs/) | 软件使用说明、数据说明、需求记录和目录说明 | [使用说明](docs/user-guide.md)、[完整目录说明](docs/directory-guide.md) |
+| [dist/quick-notes/](dist/quick-notes/) | 日常运行的exe及它的数据 | [DesktopTaskWidget.exe](dist/quick-notes/DesktopTaskWidget.exe) |
+| [archive/](archive/) | 废弃脚本、旧构建缓存、旧导出文件 | [归档说明](archive/README.md) |
 
-> Windows提示"已阻止不安全应用"：Windows安全中心 → 应用和浏览器控制 → 智能应用控制 → 关闭
+`.venv/`是当前使用的Python环境，`venv/`是原有环境。两者包含第三方依赖，保持原位置。`.git/`保存版本历史，`.idea/`保存IDE设置。
 
-## 界面
+## 常用操作
 
-| 按钮 | 功能 |
-|------|------|
-| 📍 | 置顶/取消置顶 |
-| ➕ | 添加任务（任务页）/ 添加习惯（习惯页）/ 快速便签（便签页） |
-| 📋/📝 | 切换待办事项与快捷便签，显示当前列表图标 |
-| 水杯/蓝底循环图标 | 切换饮水小助手与习惯列表 |
-| ⚙ | 设置 |
+日常使用：双击`dist/quick-notes/DesktopTaskWidget.exe`。
 
-新增按钮右侧依次为待办/便签切换按钮、水杯按钮。在饮水页点击待办/便签按钮，返回最近使用的列表。
+在项目根目录的PowerShell中执行：
 
-## 任务管理
+```powershell
+# 从源码启动
+.\.venv\Scripts\python.exe -X utf8 src/main.py
 
-- **添加**：点 ➕，填写内容、截止时间、优先级，确定
-- **完成**：点任务左侧圆圈
-- **编辑/删除/归档**：双击任务
+# 打包，更新dist/quick-notes/DesktopTaskWidget.exe
+.\.venv\Scripts\python.exe -X utf8 tools/build/build_simple.py
 
-颜色含义：红色=紧急（1小时内到期），橙色=P1，蓝色=P2，白色=P3。完成的任务带删除线显示在底部。
+# 自动回归测试，使用临时数据
+.\.venv\Scripts\python.exe -X utf8 -m unittest discover -s tools/tests -v
+```
 
-## 习惯管理
+打包前退出目标exe。依赖清单见[requirements.txt](requirements.txt)，操作细节见[使用说明](docs/user-guide.md)。
 
-点击水杯/蓝底循环图标切换到习惯列表，点 ➕ 添加每日习惯，设置提醒时间。完成后点圆圈标记。
+## 数据与记录
 
-## 贴边隐藏
+源码运行时，数据保存在项目根目录；exe运行时，数据保存在exe同目录。便签主文件为`notes_log.jsonl`。
 
-拖动窗口到屏幕左/右/上边缘，窗口自动隐藏。鼠标移到屏幕边缘触发区，窗口滑回。
-
-## 快速便签
-
-- 程序运行时，在其他应用中也可按 **Ctrl＋Alt＋N** 打开输入窗口。
-- **Enter保存**，**Shift＋Enter换行**。中文输入法选词期间不会提交便签。
-- 保存成功后关闭输入窗口，便签列表显示新记录和展示时间，置顶优先，其余按展示时间倒序。
-- 弹窗采用白底、小圆角浅灰细边框和轻微阴影，中文标题、无边框输入区和右下发送按钮。输入内容后发送按钮变绿。拖动四边或四角可调整大小，可见窗体最小320×300，含阴影边距为344×324。
-- **点击窗口外部**自动收起，未保存草稿在本次运行期间保留。右上固定按钮可保持展开；关闭按钮和Esc也可收起。
-- 固定时图钉显示为绿色实心，底部按钮变浅，鼠标悬停恢复颜色，仍可点击。
-- 底部工具支持插入标签、无序列表和有序列表，按纯文本保存；拖动顶部标题区域可移动窗口。
-- 点📝查看便签，点＋继续记录。列表采用深色卡片，展示时间以灰色小字显示在正文上方，右侧三个点打开操作菜单。
-- 双击卡片即可直接编辑，绿色边框标识编辑状态。Enter或发送按钮保存，Shift＋Enter换行，Esc或取消按钮恢复原文。
-- 编辑草稿在本次运行期间保留，切换列表或自动刷新不会丢失。保存后保留创建时间和原排序。
-- 快捷键被占用时会提示，可通过便签页的＋继续使用；关闭占用程序并重启组件可重新注册。
-- 右侧菜单支持编辑、列表置顶、弹出浮窗、归档、历史版本、修改日期和删除。浮窗修改原便签；列表置顶与浮窗固定互不影响。
-- 归档仅在JSONL中留下归档时间和正文，从列表隐藏，不提供归档列表或取消归档。删除保留日志并标记删除时间。
-- 修改日期同时修改展示日期和时间，真实创建时间保持不变。历史版本展示创建及每次正文修改。
-- `notes_log.jsonl`是UTF-8事件主文件，包含全文和操作历史，不再使用数据库存储。`notes_export.csv`是可重建的看板数据导出，归档便签不导出，删除便签带删除时间供筛选。
-- 首次启动会只读迁移旧SQLite或旧JSONL数据，保留旧SQLite及旧日志备份。新格式已存在时不会重复迁移。字段与统计口径见[便签数据说明](docs/notes-data.md)。
-
-## 饮水小助手
-
-饮水小助手为独立页面，水杯按钮可切换到习惯列表（蓝底白色循环图标）。在饮水页的⚙或顶部＋打开饮水设置。主要控件固定在上方，今日记录只使用剩余高度并可滚动，不挤压标题、进度条、倒计时和三个按钮。主窗口最小尺寸为300×280。
-
-## 设置（⚙）
-
-- 窗口背景透明度、文字大小、文字透明度
-- 开机自启动
-
-## 数据文件
-
-所有数据保存在exe同目录下：
-
-| 文件 | 内容 |
-|------|------|
-| `tasks.json` | 任务数据 |
-| `habits.json` | 习惯数据 |
-| `water.json` | 饮水设置和记录 |
-| `settings.json` | 窗口设置 |
-| `notes_archive.sqlite3` | 旧版本数据库，迁移后仅作为原始备份保留 |
-| `notes_log.jsonl` | 便签事件主文件，含当前内容、历史、归档与删除记录 |
-| `notes_export.csv` | 看板用当前快照，归档除外，删除带标记 |
-
-便签文件在首次打开便签列表或保存时生成。源码运行时位于项目目录，打包后位于exe同目录。
-
-备份：退出程序后复制上述数据文件。便签以`notes_archive.sqlite3`为准，恢复时放回数据目录。
-
-## 源码运行与验证
-
-在项目目录运行`python main.py`，依赖见`requirements.txt`。本机现有可用环境为`.venv\Scripts\python.exe`。
-
-测试命令：`.venv\Scripts\python.exe -X utf8 -m unittest discover -s tests -v`。测试使用临时数据目录，不修改实际任务和便签。
-
-当前打包产物：`dist/quick-notes/DesktopTaskWidget.exe`。先退出旧版再运行，与同目录旧版共用数据。Windows弹窗焦点验证：`.venv\Scripts\python.exe -X utf8 tests/verify_note_popup.py`。
-
-## 打包
-
-运行`.venv\Scripts\python.exe -X utf8 build_simple.py`，或使用已安装PyInstaller的Python环境运行`python build_simple.py`。
-
-脚本使用当前Python环境、项目根目录的源码及`DesktopTaskWidget.spec`，检查快速便签模块并生成`dist/quick-notes/DesktopTaskWidget.exe`。构建缓存放在`build/release`，不会清空dist或删除已有数据。支持从其他工作目录调用；失败时返回非零退出码。打包前退出目标exe，避免文件占用。
-
-## 系统要求
-
-- Windows 10/11
-- 开机自启动可能需要管理员权限
-
----
-
-© 2025 克里斯数据 保留所有权利
+[WORKLOG.md](WORKLOG.md)按时间追加项目工作记录。[AGENTS.md](AGENTS.md)和[CLAUDE.md](CLAUDE.md)供开发助手读取。

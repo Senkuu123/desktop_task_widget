@@ -181,3 +181,14 @@
 
 - 补充高DPI坐标舍入容差：触发屏幕边界允许1个逻辑像素偏差，覆盖right+1位置，避免末端鼠标无法触发或再次隐藏；追加回归通过。
 - 最终build_simple.py打包成功，更新dist/quick-notes/DesktopTaskWidget.exe；未创建Git提交。
+
+## 2026-09-12 14:16
+
+整理Python文件及整个项目目录，按用户补充统一英文名称。
+- 23个自有py：src现用18个，tools/build打包1个，tools/tests自动测试1个及manual专项检查2个，archive/retired-scripts废弃版本生成脚本1个。15个文件内容与整理前哈希一致，8个文件适配路径或归档说明。quick_notes/legacy.py仍参与旧数据迁移，保留现用。
+- 图标与qrc集中src/resources；spec、版本元数据及DPI清单集中tools/build；新缓存tools/build/cache；原build、根字节码缓存和旧文本导出归入archive。完整使用说明移docs/user-guide.md，根README改为入口导航，完整目录清单见docs/directory-guide.md。
+- 数据路径继续按源码项目根／exe同目录定位，默认备份与导出、自启动配置、资源加载、打包输入及测试导入已同步。dist/quick-notes发布程序和数据、两个虚拟环境保留原位置。
+- 用户确认手动清理了根目录6个JSON数据文件，按要求保持删除状态；原有IDE修改保留。
+- 整理前、首轮及最终布局均通过现有14项测试；最终23文件语法、跨工作目录导入、数据／图标／冻结路径、临时目录生成资源及文档链接检查通过。PyInstaller实际构建和TOC核对确认18个现用模块及移动后资源完整入包，工具和归档脚本未入包。
+- 最终验证exe：tools/build/cache/layout-verification/dist/DesktopTaskWidget.exe。沙箱内创建新缓存曾遇WinError 5，同一构建命令获自动批准在沙箱外完成。未启动验证exe或重复Windows专项交互测试，原发布exe未覆盖。
+- 代码审查发现build/忽略模式会漏收tools/build源码，已改为精确缓存路径；第二轮复核通过。git diff --check通过。未创建Git提交。

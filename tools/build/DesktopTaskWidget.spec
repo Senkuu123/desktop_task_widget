@@ -1,11 +1,19 @@
 # -*- mode: python ; coding: utf-8 -*-
 
+from pathlib import Path
+
+PROJECT_DIR = Path(SPECPATH).resolve().parents[1]
 
 a = Analysis(
-    ['main.py'],
-    pathex=[],
+    [str(PROJECT_DIR / 'src' / 'main.py')],
+    pathex=[str(PROJECT_DIR / 'src')],
     binaries=[],
-    datas=[('app_icon.ico', '.'), ('version_info.txt', '.'), ('dpi.manifest', '.'), ('images_rc.py', '.')],
+    datas=[
+        (str(PROJECT_DIR / 'src/resources/app_icon.ico'), '.'),
+        (str(PROJECT_DIR / 'tools/build/version_info.txt'), '.'),
+        (str(PROJECT_DIR / 'tools/build/dpi.manifest'), '.'),
+        (str(PROJECT_DIR / 'src' / 'images_rc.py'), '.'),
+    ],
     hiddenimports=['PyQt5.sip', 'ctypes', 'winreg', 'platform', 'sys', 'os', 'datetime', 'json', 're', 'images_rc', 'winotify'],
     hookspath=[],
     hooksconfig={},
@@ -35,7 +43,7 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    version='version_info.txt',
-    manifest='dpi.manifest',
-    icon=['app_icon.ico'],
+    version=str(PROJECT_DIR / 'tools/build/version_info.txt'),
+    manifest=str(PROJECT_DIR / 'tools/build/dpi.manifest'),
+    icon=[str(PROJECT_DIR / 'src/resources/app_icon.ico')],
 )

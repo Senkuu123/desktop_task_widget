@@ -5,7 +5,7 @@ import ctypes
 from ctypes import wintypes
 from pathlib import Path
 os.environ['QT_QPA_PLATFORM'] = 'windows'
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+sys.path.insert(0, str(Path(__file__).resolve().parents[3] / 'src'))
 from main import setup_dpi_scaling
 from PyQt5.QtCore import QPoint, Qt
 from PyQt5.QtWidgets import QApplication, QWidget

@@ -4,7 +4,7 @@ import ctypes
 import os
 import sys
 from pathlib import Path
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+sys.path.insert(0, str(Path(__file__).resolve().parents[3] / 'src'))
 os.environ['QT_QPA_PLATFORM'] = 'windows'
 from PyQt5.QtCore import QTimer
 from PyQt5.QtWidgets import QApplication

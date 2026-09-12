@@ -18,8 +18,8 @@ def get_data_dir():
         # 打包后的exe文件，使用exe所在目录
         return os.path.dirname(sys.executable)
     else:
-        # 开发环境，使用脚本所在目录
-        return os.path.dirname(os.path.abspath(__file__))
+        # 源码位于src目录，数据继续保存在项目根目录。
+        return os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
 def get_tasks_file_path():
@@ -126,7 +126,7 @@ def backup_tasks() -> bool:
         # 创建备份文件名（添加时间戳）
         from datetime import datetime
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        backup_file = f"tasks_backup_{timestamp}.json"
+        backup_file = os.path.join(get_data_dir(), f"tasks_backup_{timestamp}.json")
         
         # 复制文件
         with open(TASKS_FILE, 'r', encoding='utf-8') as src:
@@ -156,7 +156,7 @@ def export_tasks_to_txt(tasks_list: List[Task], filename: str = None) -> bool:
         if filename is None:
             from datetime import datetime
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            filename = f"tasks_export_{timestamp}.txt"
+            filename = os.path.join(get_data_dir(), f"tasks_export_{timestamp}.txt")
         
         with open(filename, 'w', encoding='utf-8') as f:
             f.write("=== 任务列表导出 ===\n\n")

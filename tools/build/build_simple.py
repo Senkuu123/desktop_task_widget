@@ -5,40 +5,41 @@
 import os
 import sys
 import subprocess
+from pathlib import Path
 
-PROJECT_DIR = os.path.dirname(os.path.abspath(__file__))
+PROJECT_DIR = Path(__file__).resolve().parents[2]
 
 def check_required_files():
     """检查必需的文件是否存在"""
     required_files = [
-        'main.py',
-        'task_window.py',
-        'task.py',
-        'habit.py',
-        'storage.py',
-        'add_task_dialog.py',
-        'edit_task_dialog.py',
-        'add_habit_dialog.py',
-        'water_reminder.py',
-        'autostart_manager.py',
-        'images_rc.py',  # 新增资源文件
-        'DesktopTaskWidget.spec',
-        'quick_notes/__init__.py',
-        'quick_notes/dialog.py',
-        'quick_notes/card.py',
-        'quick_notes/actions.py',
-        'quick_notes/legacy.py',
-        'quick_notes/hotkey.py',
-        'quick_notes/store.py',
-        'app_icon.ico',
-        'version_info.txt'
+        'src/main.py',
+        'src/task_window.py',
+        'src/task.py',
+        'src/habit.py',
+        'src/storage.py',
+        'src/add_task_dialog.py',
+        'src/edit_task_dialog.py',
+        'src/add_habit_dialog.py',
+        'src/water_reminder.py',
+        'src/autostart_manager.py',
+        'src/images_rc.py',  # 新增资源文件
+        'tools/build/DesktopTaskWidget.spec',
+        'src/quick_notes/__init__.py',
+        'src/quick_notes/dialog.py',
+        'src/quick_notes/card.py',
+        'src/quick_notes/actions.py',
+        'src/quick_notes/legacy.py',
+        'src/quick_notes/hotkey.py',
+        'src/quick_notes/store.py',
+        'src/resources/app_icon.ico',
+        'tools/build/version_info.txt'
     ]
     
     print("🔍🔍🔍🔍 检查必需文件...")
     missing_files = []
     
     for file in required_files:
-        if not os.path.exists(file):
+        if not os.path.exists(PROJECT_DIR / file):
             missing_files.append(file)
     
     if missing_files:
@@ -47,22 +48,22 @@ def check_required_files():
             print(f"   - {file}")
         
         # 如果图标文件缺失，创建一个简单的版本
-        if 'app_icon.ico' in missing_files:
+        if 'src/resources/app_icon.ico' in missing_files:
             print("⚠️  正在创建默认图标文件...")
-            if create_default_icon() and os.path.exists('app_icon.ico'):
-                missing_files.remove('app_icon.ico')
+            if create_default_icon() and os.path.exists(PROJECT_DIR / 'src/resources/app_icon.ico'):
+                missing_files.remove('src/resources/app_icon.ico')
                 print("✅ 已创建默认图标文件")
         
         # 如果版本信息文件缺失，创建一个
-        if 'version_info.txt' in missing_files:
+        if 'tools/build/version_info.txt' in missing_files:
             print("⚠️  正在创建版本信息文件...")
-            if create_version_info() and os.path.exists('version_info.txt'):
-                missing_files.remove('version_info.txt')
+            if create_version_info() and os.path.exists(PROJECT_DIR / 'tools/build/version_info.txt'):
+                missing_files.remove('tools/build/version_info.txt')
                 print("✅ 已创建版本信息文件")
         
         # 如果资源文件缺失，提示用户
-        if 'images_rc.py' in missing_files:
-            print("⚠️  images_rc.py 文件缺失，这是必要的资源文件")
+        if 'src/images_rc.py' in missing_files:
+            print("⚠️  src/images_rc.py 文件缺失，这是必要的资源文件")
             print("   请确保已生成此文件或从源代码中获取")
         
         if missing_files:
@@ -87,7 +88,7 @@ def create_default_icon():
         draw.line([(32, 40), (44, 24)], fill=(255, 255, 255, 255), width=4)
         
         # 保存为ICO文件
-        img.save('app_icon.ico', format='ICO', sizes=[(64, 64), (48, 48), (32, 32), (16, 16)])
+        img.save(PROJECT_DIR / 'src/resources/app_icon.ico', format='ICO', sizes=[(64, 64), (48, 48), (32, 32), (16, 16)])
         return True
     except ImportError:
         print("⚠️  未安装PIL库，无法创建默认图标")
@@ -143,7 +144,7 @@ VSVersionInfo(
 )
 '''
     try:
-        with open('version_info.txt', 'w', encoding='utf-8') as f:
+        with open(PROJECT_DIR / 'tools/build/version_info.txt', 'w', encoding='utf-8') as f:
             f.write(version_info)
         return True
     except Exception as e:
@@ -182,7 +183,7 @@ def create_dpi_manifest():
 </assembly>'''
     
     try:
-        with open('dpi.manifest', 'w', encoding='utf-8') as f:
+        with open(PROJECT_DIR / 'tools/build/dpi.manifest', 'w', encoding='utf-8') as f:
             f.write(manifest_content)
         print("✅ 已创建DPI感知manifest文件")
         return True
@@ -203,8 +204,8 @@ def run_pyinstaller():
         sys.executable, '-X', 'utf8', '-m', 'PyInstaller',
         '--noconfirm',
         '--distpath', dist_dir,
-        '--workpath', os.path.join(PROJECT_DIR, 'build', 'release'),
-        os.path.join(PROJECT_DIR, 'DesktopTaskWidget.spec'),
+        '--workpath', os.path.join(PROJECT_DIR, 'tools', 'build', 'cache', 'release'),
+        os.path.join(PROJECT_DIR, 'tools', 'build', 'DesktopTaskWidget.spec'),
     ]
     print('开始打包，请先退出同目录正在运行的DesktopTaskWidget.exe。', flush=True)
     try:
@@ -234,7 +235,7 @@ def main():
     print('桌面任务小组件打包工具')
     if not check_required_files():
         return 1
-    if not os.path.exists('dpi.manifest') and not create_dpi_manifest():
+    if not os.path.exists(PROJECT_DIR / 'tools/build/dpi.manifest') and not create_dpi_manifest():
         return 1
     return 0 if run_pyinstaller() else 1
 

@@ -1,10 +1,13 @@
 __pycache__/
 *.pyc
-.venv/         # 虚拟环境文件夹
-.idea/         # IDE项目配置文件
+/.venv/
+/venv/
+/.idea/
 .vscode/
-dist/
-build/
+/dist/
+/tools/build/cache/
+/archive/build/
+/archive/python-cache/
 *.log
 # 本机便签数据及迁移备份
 notes_log.jsonl

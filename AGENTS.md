@@ -123,3 +123,10 @@ For multi-step tasks, state a brief plan:
 ### 贴边隐藏回归约定
 
 - 隐藏恢复问题不能仅验证目标矩形。需使用实际Windows窗口动画和定时器验证持续悬停、移出隐藏；唤出区域与保持展开区域应一致。曾发生1像素修正测试通过但用户仍复现，报告必须区分模拟坐标测试与用户现场。
+
+### 本项目目录约定
+
+- 用户偏好英文目录名。整理目录时同时考虑源码、资源、工具、文档及历史产物，避免只移动py后留下零散文件。
+- `src/`为现用源码，图标资源位于`src/resources/`；`tools/build/`为打包脚本、spec与Windows元数据；`tools/tests/`为自动测试及`manual/`专项验证；`docs/`为文档；`archive/`为历史文件。
+- 日常入口和完整目录说明以根目录README及`docs/directory-guide.md`为准。发布目录固定`dist/quick-notes/`，源码数据仍位于项目根目录，现有虚拟环境不搬迁。
+- Git只忽略具体缓存目录，不能用`build/`这种匹配所有层级的规则，否则会漏收`tools/build/`中的打包源码。

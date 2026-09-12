@@ -1,8 +1,13 @@
 """
-创建版本信息文件
+旧版版本信息生成脚本，已由tools/build/build_simple.py的内置生成器替代。
+仅供历史参考；手动运行会覆盖tools/build/version_info.txt。
 """
 
 import os
+from pathlib import Path
+
+PROJECT_DIR = Path(__file__).resolve().parents[2]
+VERSION_INFO_PATH = PROJECT_DIR / 'tools' / 'build' / 'version_info.txt'
 
 def create_version_info_file():
     """创建版本信息文件"""
@@ -39,14 +44,14 @@ VSVersionInfo(
 )
 """
     
-    with open('version_info.txt', 'w', encoding='utf-8') as f:
+    with open(VERSION_INFO_PATH, 'w', encoding='utf-8') as f:
         f.write(version_content)
     
-    print("✅ 已创建版本信息文件: version_info.txt")
+    print(f"✅ 已创建版本信息文件: {VERSION_INFO_PATH}")
     
     # 验证文件是否存在
-    if os.path.exists('version_info.txt'):
-        print(f"📁 文件大小: {os.path.getsize('version_info.txt')} 字节")
+    if os.path.exists(VERSION_INFO_PATH):
+        print(f"📁 文件大小: {os.path.getsize(VERSION_INFO_PATH)} 字节")
         return True
     else:
         print("❌ 创建版本信息文件失败")

@@ -7,6 +7,7 @@ import os
 import sys
 import winreg
 import json
+from storage import get_data_dir
 
 
 class AutoStartManager:
@@ -15,7 +16,7 @@ class AutoStartManager:
     def __init__(self, app_name="DesktopTaskWidget"):
         self.app_name = app_name
         self.registry_key = r"SOFTWARE\Microsoft\Windows\CurrentVersion\Run"
-        self.config_file = "autostart_config.json"
+        self.config_file = os.path.join(get_data_dir(), "autostart_config.json")
         
     def get_exe_path(self):
         """获取当前可执行文件的完整路径 - 优化版本"""
