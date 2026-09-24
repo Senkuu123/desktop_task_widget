@@ -275,50 +275,51 @@ class NoteTests(unittest.TestCase):
             for screen_rect in (QRect(0, 0, 1920, 1080), QRect(-1280, -100, 1280, 1024)):
                 screen = Mock()
                 screen.geometry.return_value = screen_rect
-                for edge in ('right', 'left', 'top'):
-                    x = screen_rect.right() + 1 - window.width() if edge == 'right' else screen_rect.left()
-                    y = screen_rect.top()
-                    window._edge_screen_geometry = screen_rect
-                    window._original_pos = QPoint(x, y)
-                    window.edge_hidden = True
-                    window._current_edge = edge
-                    window._should_rehide = True
-                    window._pending_hide = False
-                    with patch.object(edge_module.QApplication, 'screenAt', return_value=screen):
-                        window._restore_from_edge()
-                    target = window._show_anim.endValue()
-                    window._show_anim.stop()
-                    restored_geometry = QRect(target, window.size())
-                    window._restoring = False
-                    cursor = QPoint(screen_rect.right(), y + 20) if edge == 'right' else (
-                        QPoint(x, y + 20) if edge == 'left' else QPoint(x + 20, screen_rect.top()))
-                    # 即使平台实际窗口向内偏移，鼠标停在原唤出区域也应保持展开。
-                    shifted = restored_geometry.translated(-2, 0) if edge == 'right' else (
-                        restored_geometry.translated(2, 0) if edge == 'left' else restored_geometry.translated(0, 2))
-                    with patch.object(window, 'geometry', return_value=shifted), \
-                            patch.object(edge_module.QCursor, 'pos', return_value=cursor), \
-                            patch.object(window, '_hide_at_edge') as hide:
-                        for _ in range(5):
-                            window._check_rehide()
-                        hide.assert_not_called()
-                    self.assertFalse(window._cursor_in_edge_trigger(QPoint(screen_rect.right() + 2, y + 20)))
-                    if edge == 'right':
-                        rounded_cursor = QPoint(screen_rect.right() + 1, y + 20)
-                        self.assertTrue(window._cursor_in_edge_trigger(rounded_cursor))
-                        with patch.object(edge_module.QCursor, 'pos', return_value=rounded_cursor), patch.object(window, '_hide_at_edge') as hide:
-                            window._check_rehide()
+                with patch.object(edge_module.QApplication, 'screenAt', return_value=screen):
+                    for edge in ('right', 'left', 'top'):
+                        x = screen_rect.right() + 1 - window.width() if edge == 'right' else screen_rect.left()
+                        y = screen_rect.top()
+                        window._edge_screen_geometry = screen_rect
+                        window._original_pos = QPoint(x, y)
+                        window.edge_hidden = True
+                        window._current_edge = edge
+                        window._should_rehide = True
+                        window._pending_hide = False
+                        with patch.object(edge_module.QApplication, 'screenAt', return_value=screen):
+                            window._restore_from_edge()
+                        target = window._show_anim.endValue()
+                        window._show_anim.stop()
+                        restored_geometry = QRect(target, window.size())
+                        window._restoring = False
+                        cursor = QPoint(screen_rect.right(), y + 20) if edge == 'right' else (
+                            QPoint(x, y + 20) if edge == 'left' else QPoint(x + 20, screen_rect.top()))
+                        # 即使平台实际窗口向内偏移，鼠标停在原唤出区域也应保持展开。
+                        shifted = restored_geometry.translated(-2, 0) if edge == 'right' else (
+                            restored_geometry.translated(2, 0) if edge == 'left' else restored_geometry.translated(0, 2))
+                        with patch.object(window, 'geometry', return_value=shifted), \
+                                patch.object(edge_module.QCursor, 'pos', return_value=cursor), \
+                                patch.object(window, '_hide_at_edge') as hide:
+                            for _ in range(5):
+                                window._check_rehide()
                             hide.assert_not_called()
-                    with patch.object(window, 'geometry', return_value=restored_geometry), \
-                            patch.object(edge_module.QCursor, 'pos', return_value=cursor), \
-                            patch.object(window, '_hide_at_edge') as hide:
-                        for _ in range(5):
+                        self.assertFalse(window._cursor_in_edge_trigger(QPoint(screen_rect.right() + 2, y + 20)))
+                        if edge == 'right':
+                            rounded_cursor = QPoint(screen_rect.right() + 1, y + 20)
+                            self.assertTrue(window._cursor_in_edge_trigger(rounded_cursor))
+                            with patch.object(window, 'geometry', return_value=shifted), patch.object(edge_module.QCursor, 'pos', return_value=rounded_cursor), patch.object(window, '_hide_at_edge') as hide:
+                                window._check_rehide()
+                                hide.assert_not_called()
+                        with patch.object(window, 'geometry', return_value=restored_geometry), \
+                                patch.object(edge_module.QCursor, 'pos', return_value=cursor), \
+                                patch.object(window, '_hide_at_edge') as hide:
+                            for _ in range(5):
+                                window._check_rehide()
+                            hide.assert_not_called()
+                        with patch.object(window, 'geometry', return_value=restored_geometry), \
+                                patch.object(edge_module.QCursor, 'pos', return_value=restored_geometry.bottomLeft() + QPoint(-2, 2)), \
+                                patch.object(window, '_hide_at_edge') as hide:
                             window._check_rehide()
-                        hide.assert_not_called()
-                    with patch.object(window, 'geometry', return_value=restored_geometry), \
-                            patch.object(edge_module.QCursor, 'pos', return_value=restored_geometry.bottomLeft() + QPoint(-2, 2)), \
-                            patch.object(window, '_hide_at_edge') as hide:
-                        window._check_rehide()
-                        hide.assert_called_once_with(edge)
+                            hide.assert_called_once_with(edge)
             window.close()
             hotkey.return_value.close.assert_called_once()
 

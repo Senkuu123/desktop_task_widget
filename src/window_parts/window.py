@@ -48,6 +48,7 @@ class TransparentTaskWindow(
         self.water_widget = None
         self.folder_paths = []
         self.folders_collapsed = False
+        self.task_area_height = None
         self.folder_sort_key = None
         self.folder_sort_desc = False
 
@@ -219,6 +220,8 @@ class TransparentTaskWindow(
             self.folder_sort_key = settings.get('folder_sort_key')
             self.folder_sort_desc = settings.get('folder_sort_desc', False)
             self.folders_collapsed = settings.get('folders_collapsed', False)
+            height = settings.get('task_area_height')
+            self.task_area_height = height if isinstance(height, int) and height >= 40 else None
             
             # 加载窗口透明度
             if 'window_background_opacity' in settings:
@@ -273,6 +276,7 @@ class TransparentTaskWindow(
                 'window_geometry': f"{self.x()},{self.y()},{self.width()},{self.height()}",
                 'folder_shortcuts': self.folder_shortcuts.paths(),
                 'folders_collapsed': self.folder_shortcuts.collapsed,
+                'task_area_height': self.task_folder_splitter.preferred_task_height,
                 'folder_sort_key': self.folder_shortcuts.sort_key,
                 'folder_sort_desc': self.folder_shortcuts.sort_desc,
             }

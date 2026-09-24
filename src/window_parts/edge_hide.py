@@ -1,9 +1,30 @@
 from PyQt5.QtWidgets import QApplication
-from PyQt5.QtCore import QTimer, QPoint, QPropertyAnimation, QEasingCurve
+from PyQt5.QtCore import Qt, QTimer, QPoint, QPropertyAnimation, QEasingCurve
 from PyQt5.QtGui import QCursor
 
 
 class WindowEdgeHideMixin:
+    def _edge_hide_is_paused(self):
+        return (self.dragging or self.resizing
+                or QApplication.mouseButtons() != Qt.NoButton
+                or QApplication.activePopupWidget() is not None
+                or QApplication.activeModalWidget() is not None)
+
+    def _schedule_edge_hide(self):
+        if not self.isVisible() or self.edge_hidden or self._restoring:
+            return
+        edge = self._check_near_edge()
+        self._pending_hide = bool(edge)
+        self._pending_hide_edge = edge
+        self._pending_hide_geometry = self.geometry() if edge else None
+        self._should_rehide = False
+        self._stop_rehide_timer()
+        if edge:
+            self._start_pending_hide_timer()
+        else:
+            self._stop_pending_hide_timer()
+            self._current_edge = None
+
     def _check_near_edge(self):
         geo = self.geometry()
         screen = QApplication.screenAt(self.pos())
@@ -36,6 +57,8 @@ class WindowEdgeHideMixin:
         """窗口完全滑出屏幕边缘，靠2px条触发恢复"""
         if self.edge_hidden:
             return
+        self._pending_hide = False
+        self._stop_pending_hide_timer()
         self.edge_hidden = True
         self._current_edge = edge
         self._should_rehide = True
@@ -224,6 +247,11 @@ class WindowEdgeHideMixin:
             return
         if self._pending_hide or self._restoring or self.edge_hidden:
             return
+        if self._edge_hide_is_paused():
+            return
+        if not self._check_near_edge():
+            self._schedule_edge_hide()
+            return
         cursor = QCursor.pos()
         geo = self.geometry()
         if not geo.contains(cursor) and not self._cursor_in_edge_trigger(cursor):
@@ -249,10 +277,15 @@ class WindowEdgeHideMixin:
         if not self._pending_hide:
             self._stop_pending_hide_timer()
             return
-        geo = self._pending_hide_geometry or self.geometry()
+        if self._edge_hide_is_paused():
+            return
+        edge = self._check_near_edge()
+        if not edge:
+            self._schedule_edge_hide()
+            return
+        geo = self.geometry()
         if not geo.contains(QCursor.pos()):
             self._stop_pending_hide_timer()
-            edge = self._pending_hide_edge
             self._pending_hide = False
             if edge:
                 self._hide_at_edge(edge)

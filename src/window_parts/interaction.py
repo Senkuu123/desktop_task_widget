@@ -52,10 +52,6 @@ class WindowInteractionMixin:
     def mousePressEvent(self, event):
         """鼠标按下事件"""
         if event.button() == Qt.LeftButton:
-            # 取消待触发的贴边隐藏
-            if self._pending_hide:
-                self._pending_hide = False
-                self._stop_pending_hide_timer()
             pos = event.pos()
             
             direction, cursor = self._get_resize_info(pos)
@@ -121,16 +117,9 @@ class WindowInteractionMixin:
                     sx = snap[edge] if edge != 'top' else geo.x()
                     sy = geo.y() if edge != 'top' else snap['top']
                     self.move(sx, sy)
-                # 等鼠标离开窗口后再触发隐藏（参考QQ逻辑）
-                self._pending_hide = True
-                self._pending_hide_edge = edge
-                self._pending_hide_geometry = self.geometry()
-                self._start_pending_hide_timer()
-                return
-            # 拖动离开边缘，取消自动再隐藏
-            if self._should_rehide:
-                self._should_rehide = False
-                self._stop_rehide_timer()
+
+        # 点击、缩放和拖动松手后都按当前位置续接隐藏，避免点击清掉待隐藏状态。
+        self._schedule_edge_hide()
 
         # 释放后立即同步光标状态
         cursor_pos = self.mapFromGlobal(QCursor.pos())
@@ -199,6 +188,10 @@ class WindowInteractionMixin:
         self.setCursor(cursor)
         self.last_cursor_shape = cursor
         self.last_cursor_pos = cursor_pos
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        QTimer.singleShot(0, self._schedule_edge_hide)
 
     def leaveEvent(self, event):
         """鼠标离开窗口事件 - 优化版本"""

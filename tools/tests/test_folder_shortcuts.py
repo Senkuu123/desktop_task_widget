@@ -167,6 +167,46 @@ class FolderShortcutsTests(unittest.TestCase):
             panel.close()
             panel.deleteLater()
 
+    def test_fixed_tiles_and_splitter_height_persistence(self):
+        with isolated_window() as widget:
+            panel = widget.folder_shortcuts
+            for i in range(12):
+                panel.add_item(f'C:/folder{i}')
+            widget.resize(300, 600)
+            widget.show()
+            QTest.qWait(40)
+            grid_size, icon_size = panel.grid.gridSize(), panel.grid.iconSize()
+            for width in (410, 520, 800, 300):
+                widget.resize(width, 600)
+                QTest.qWait(20)
+                self.assertEqual(panel.grid.gridSize(), grid_size)
+                self.assertEqual(panel.grid.iconSize(), icon_size)
+            splitter = widget.task_folder_splitter
+            splitter.moveSplitter(140, 1)
+            QTest.qWait(20)
+            top = widget.task_list_widget.height()
+            bottom = panel.height()
+            widget.resize(300, 780)
+            QTest.qWait(30)
+            self.assertEqual(widget.task_list_widget.height(), top)
+            self.assertEqual(panel.height(), bottom + 180)
+            SAVE_SETTINGS(widget)
+            LOAD_SETTINGS(widget)
+            self.assertEqual(widget.task_area_height, top)
+            panel.header.click()
+            QTest.qWait(20)
+            self.assertGreater(widget.task_list_widget.height(), top)
+            self.assertEqual(splitter.handle(1).height(), 0)
+            panel.header.click()
+            QTest.qWait(20)
+            self.assertEqual(widget.task_list_widget.height(), top)
+            widget.show_page('notes')
+            QTest.qWait(20)
+            self.assertEqual(splitter.handle(1).height(), 0)
+            widget.show_page('tasks')
+            QTest.qWait(20)
+            self.assertEqual(widget.task_list_widget.height(), top)
+
     def test_hidden_scrollbar_wheel_and_centered_row(self):
         with isolated_window() as widget:
             panel = widget.folder_shortcuts

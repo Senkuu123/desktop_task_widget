@@ -9,6 +9,7 @@ from PyQt5.QtWidgets import QApplication
 from PyQt5.QtGui import QIcon, QPixmap
 from PyQt5.QtCore import Qt
 from task_window import TransparentTaskWindow
+from ui_styles import SCROLLBAR_STYLE
 import images_rc
 
 
@@ -150,6 +151,7 @@ def pre_initialize_application():
     
     # 创建应用实例
     app = QApplication(sys.argv)
+    app.setStyleSheet(SCROLLBAR_STYLE)
     
     # 设置应用属性
     app.setApplicationName("DesktopTaskWidget")

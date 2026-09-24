@@ -90,9 +90,9 @@ class FolderGrid(QListWidget):
     def fit_grid(self):
         # 滚动条不显示、不占位；按固定外部宽度计算，避免布局反馈振荡。
         width = max(3, self.contentsRect().width())
-        columns = max(3, width // 96)
+        columns = max(1, (width - 1) // 96)
         # QListView换行需要比整排列宽多1像素，将这1像素计入右侧余量。
-        side = max(1, (width - 1) // columns)
+        side = 96
         remainder = width - columns * side
         left = remainder // 2
         right = max(0, remainder - left - 1)
@@ -275,7 +275,7 @@ class FolderShortcuts(QWidget):
     def apply_style(self, font_size, font_opacity):
         alpha = int(font_opacity * 255 / 100)
         self.setStyleSheet(f'''
-            #FolderShortcuts {{ border-top: 1px solid rgba(255,255,255,45); }}
+            #FolderShortcuts {{ border: none; }}
             QPushButton {{ color: rgba(255,255,255,{alpha}); background: transparent;
                 border: none; font: {font_size}pt "Microsoft YaHei"; }}
             QPushButton:hover {{ background: rgba(255,255,255,18); }}

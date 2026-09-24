@@ -4,6 +4,8 @@ from PyQt5.QtGui import QPainter, QColor, QPen, QIcon, QPixmap, QPainterPath
 from .water_widgets import WaterDisplayWidget
 from .settings_dialog import SettingsDialog
 from .folder_shortcuts import FolderShortcuts
+from .task_folder_splitter import TaskFolderSplitter
+from ui_styles import SCROLLBAR_STYLE
 
 
 class WindowLayoutMixin:
@@ -48,12 +50,17 @@ class WindowLayoutMixin:
         # 设置列表控件的边距，确保与任务项边距一致
         self.task_list_widget.setContentsMargins(0, 0, 0, 0)
         
-        list_layout.addWidget(self.task_list_widget, 1)
+        self.task_folder_splitter = TaskFolderSplitter(self.task_area_height, self.list_container)
+        self.task_list_widget.setMinimumHeight(40)
+        self.task_folder_splitter.addWidget(self.task_list_widget)
         self.folder_shortcuts = FolderShortcuts(
             self.folder_paths, self.folders_collapsed, self.list_container,
             sort_key=self.folder_sort_key, sort_desc=self.folder_sort_desc)
-        list_layout.addWidget(self.folder_shortcuts, 1)
+        self.task_folder_splitter.addWidget(self.folder_shortcuts)
+        list_layout.addWidget(self.task_folder_splitter, 1)
+        self.folder_shortcuts.changed.connect(self.task_folder_splitter.apply_allocation)
         self.folder_shortcuts.changed.connect(self.save_window_settings)
+        self.task_folder_splitter.allocation_changed.connect(self.save_window_settings)
         
         main_layout.addWidget(self.drag_area)
         main_layout.addWidget(self.list_container)
@@ -171,57 +178,7 @@ class WindowLayoutMixin:
         self.folder_shortcuts.apply_style(self.current_font_size, self.current_font_opacity)
 
         # 2. 核心修改：设置VS Code风格且支持悬停显示的滚动条样式
-        scrollbar_style = f"""
-            QScrollBar:vertical {{
-                background: transparent;
-                width: 8px;
-                margin: 0px;
-                border-radius: 4px;
-            }}
-            QScrollBar::handle:vertical {{
-                background: rgba(100, 100, 100, 0); /* 初始完全透明 */
-                border-radius: 4px;
-                min-height: 20px;
-            }}
-            QScrollBar::handle:vertical:hover {{
-                background: rgba(120, 120, 120, 220); /* 悬停时显示 */
-            }}
-            QScrollBar::handle:vertical:pressed {{
-                background: rgba(140, 140, 140, 255);
-            }}
-            QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{
-                background: none;
-                height: 0px;
-            }}
-            QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {{
-                background: none;
-            }}
-
-            QScrollBar:horizontal {{
-                background: transparent;
-                height: 8px;
-                margin: 0px;
-                border-radius: 4px;
-            }}
-            QScrollBar::handle:horizontal {{
-                background: rgba(100, 100, 100, 0); /* 初始完全透明 */
-                border-radius: 4px;
-                min-width: 20px;
-            }}
-            QScrollBar::handle:horizontal:hover {{
-                background: rgba(120, 120, 120, 220); /* 悬停时显示 */
-            }}
-            QScrollBar::handle:horizontal:pressed {{
-                background: rgba(140, 140, 140, 255);
-            }}
-            QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {{
-                background: none;
-                width: 0px;
-            }}
-            QScrollBar::add-page:horizontal, QScrollBar::sub-page:horizontal {{
-                background: none;
-            }}
-        """
+        scrollbar_style = SCROLLBAR_STYLE
         # 直接应用样式到滚动条对象
         self.task_list_widget.verticalScrollBar().setStyleSheet(scrollbar_style)
         self.task_list_widget.horizontalScrollBar().setStyleSheet(scrollbar_style)

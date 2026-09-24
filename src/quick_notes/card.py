@@ -128,7 +128,8 @@ class NoteCard(QWidget):
         self.sync_size()
 
     def sync_size(self):
-        width = max(100, self.owner.task_list_widget.viewport().width() - 4)
+        # 始终预留4像素滚动条和4像素间隔，避免滚动条显隐改变卡片宽度。
+        width = max(100, self.owner.task_list_widget.contentsRect().width() - 8)
         self.setFixedWidth(width)
         self.content_label.setFixedHeight(max(24, self.content_label.heightForWidth(max(60, width - 26))))
         self.surface.layout().activate()

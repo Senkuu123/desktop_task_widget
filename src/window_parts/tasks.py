@@ -45,7 +45,10 @@ class WindowTasksMixin:
         self.water_page_btn.setToolTip(('切换到饮水小助手' if is_habits else '切换到习惯列表')
                                      if self.current_page in ('water', 'habits') else ('打开习惯列表' if is_habits else '打开饮水小助手'))
         self.task_list_widget.setVisible(self.current_page != 'water')
+        self.list_container.layout().setContentsMargins(10 if self.current_page == 'notes' else 5, 5, 2 if self.current_page == 'notes' else 5, 5)
         self.folder_shortcuts.setVisible(self.current_page == 'tasks')
+        self.task_folder_splitter.setVisible(self.current_page != 'water')
+        self.task_folder_splitter.apply_allocation()
         self.water_widget.setVisible(self.current_page == 'water')
         if self.current_page != 'notes':
             self.note_cards.clear()

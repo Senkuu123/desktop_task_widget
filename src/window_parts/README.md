@@ -7,6 +7,7 @@
 | 初始化、窗口配置、置顶 | `window.py` | `TransparentTaskWindow.__init__`、`setup_basic_window_properties`、`toggle_window_topmost`、`delayed_task_load`、`load_window_settings`、`save_window_settings` |
 | 布局、样式、页面切换 | `layout.py` | `WindowLayoutMixin.initUI`、`_create_top_bar`、`update_window_style`、`show_page`、`show_add_dialog`、`create_water_cup_icon` |
 | 文件夹快捷访问、折叠、菜单排序 | `folder_shortcuts.py` | `FolderShortcuts`、`FolderGrid`、`FolderDelegate` |
+| 待办／文件夹高度分配 | `task_folder_splitter.py` | `TaskFolderSplitter`、`apply_allocation`、`remember_allocation` |
 | 任务增改、排序、完成、存储调用 | `tasks.py` | `WindowTasksMixin.refresh_task_display`、`on_item_double_clicked`、`on_task_status_changed`、`_check_and_update_urgency`、`load_tasks`、`save_tasks` |
 | 绘制、拖动、缩放、光标、Qt事件 | `interaction.py` | `WindowInteractionMixin.mousePressEvent`、`mouseMoveEvent`、`mouseReleaseEvent`、`resizeEvent`、`eventFilter`、`closeEvent` |
 | 便签加载、列表、编辑、快捷记录 | `notes.py` | `WindowNotesMixin.load_notes`、`refresh_notes_display`、`update_inline_note`、`show_quick_note`、`save_quick_note` |

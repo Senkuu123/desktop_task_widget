@@ -4,6 +4,7 @@ from PyQt5.QtCore import Qt, pyqtSignal, QEvent, QTimer, QSize, QPointF, QRectF
 from PyQt5.QtGui import QIcon, QPixmap, QPainter, QPen, QColor, QPolygonF, QTextCursor
 from PyQt5.QtWidgets import (QApplication, QDialog, QVBoxLayout, QHBoxLayout,
                              QLabel, QPlainTextEdit, QPushButton, QWidget, QGraphicsOpacityEffect)
+from ui_styles import SCROLLBAR_STYLE
 
 
 def toolbar_icon(kind, color='#999999', filled=False):
@@ -115,11 +116,7 @@ class QuickNoteDialog(QDialog):
             QPushButton#saveNote { background: #57ae83; border-radius: 8px; }
             QPushButton#saveNote:hover { background: #429c70; }
             QPushButton#saveNote:disabled { background: #d0d0d0; }
-            QScrollBar:vertical { background: transparent; width: 6px; }
-            QScrollBar::handle:vertical { background: #ddd; border-radius: 3px; min-height: 24px; }
-            QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0; }
-            QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical { background: transparent; }
-        ''')
+        ''' + SCROLLBAR_STYLE)
         layout = QVBoxLayout(self)
         margin = self.SHADOW_MARGIN
         layout.setContentsMargins(16 + margin, 16 + margin, 12 + margin, 12 + margin)
