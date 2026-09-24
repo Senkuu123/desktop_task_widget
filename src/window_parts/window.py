@@ -46,6 +46,10 @@ class TransparentTaskWindow(
         self.notified_task_ids = set()  # 已弹窗提醒的任务ID集合
         self.water_reminder = load_water_reminder()
         self.water_widget = None
+        self.folder_paths = []
+        self.folders_collapsed = False
+        self.folder_sort_key = None
+        self.folder_sort_desc = False
 
         # 贴边隐藏状态
         self.edge_hidden = False
@@ -211,6 +215,10 @@ class TransparentTaskWindow(
         """加载窗口设置"""
         try:
             settings = load_settings()
+            self.folder_paths = settings.get('folder_shortcuts', [])
+            self.folder_sort_key = settings.get('folder_sort_key')
+            self.folder_sort_desc = settings.get('folder_sort_desc', False)
+            self.folders_collapsed = settings.get('folders_collapsed', False)
             
             # 加载窗口透明度
             if 'window_background_opacity' in settings:
@@ -262,7 +270,11 @@ class TransparentTaskWindow(
                 'window_background_opacity': self.window_background_opacity,
                 'current_font_size': self.current_font_size,
                 'current_font_opacity': self.current_font_opacity,
-                'window_geometry': f"{self.x()},{self.y()},{self.width()},{self.height()}"
+                'window_geometry': f"{self.x()},{self.y()},{self.width()},{self.height()}",
+                'folder_shortcuts': self.folder_shortcuts.paths(),
+                'folders_collapsed': self.folder_shortcuts.collapsed,
+                'folder_sort_key': self.folder_shortcuts.sort_key,
+                'folder_sort_desc': self.folder_shortcuts.sort_desc,
             }
 
             save_settings(settings)

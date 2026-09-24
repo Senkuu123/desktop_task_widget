@@ -3,6 +3,7 @@ from PyQt5.QtCore import Qt, QTimer
 from PyQt5.QtGui import QPainter, QColor, QPen, QIcon, QPixmap, QPainterPath
 from .water_widgets import WaterDisplayWidget
 from .settings_dialog import SettingsDialog
+from .folder_shortcuts import FolderShortcuts
 
 
 class WindowLayoutMixin:
@@ -48,6 +49,11 @@ class WindowLayoutMixin:
         self.task_list_widget.setContentsMargins(0, 0, 0, 0)
         
         list_layout.addWidget(self.task_list_widget, 1)
+        self.folder_shortcuts = FolderShortcuts(
+            self.folder_paths, self.folders_collapsed, self.list_container,
+            sort_key=self.folder_sort_key, sort_desc=self.folder_sort_desc)
+        list_layout.addWidget(self.folder_shortcuts, 1)
+        self.folder_shortcuts.changed.connect(self.save_window_settings)
         
         main_layout.addWidget(self.drag_area)
         main_layout.addWidget(self.list_container)
@@ -162,6 +168,7 @@ class WindowLayoutMixin:
             }}
         """
         self.task_list_widget.setStyleSheet(list_widget_style)
+        self.folder_shortcuts.apply_style(self.current_font_size, self.current_font_opacity)
 
         # 2. 核心修改：设置VS Code风格且支持悬停显示的滚动条样式
         scrollbar_style = f"""

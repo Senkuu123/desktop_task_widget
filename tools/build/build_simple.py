@@ -16,6 +16,7 @@ def check_required_files():
         'src/task_window.py',
         'src/window_parts/__init__.py',
         'src/window_parts/edge_hide.py',
+        'src/window_parts/folder_shortcuts.py',
         'src/window_parts/habits.py',
         'src/window_parts/interaction.py',
         'src/window_parts/layout.py',
