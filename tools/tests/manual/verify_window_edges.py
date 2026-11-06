@@ -16,7 +16,7 @@ from PyQt5.QtCore import QPoint, QPropertyAnimation
 from PyQt5.QtTest import QTest
 from PyQt5.QtWidgets import QApplication
 from test_window_parts import isolated_window
-from window_parts import edge_hide
+from window_parts import edge_hide, window
 
 
 def main():
@@ -24,6 +24,7 @@ def main():
     app = QApplication([])
     assert app.platformName() == 'windows', '必须使用真实Windows Qt平台'
     screen = app.primaryScreen().geometry()
+    save_window_settings = window.TransparentTaskWindow.save_window_settings
     errors = []
     results = []
     with patch.object(sys, 'excepthook', side_effect=lambda *error: errors.append(error)):
@@ -41,10 +42,25 @@ def main():
                     QPoint(screen.right(), y + 20) if edge == 'right' else QPoint(x + 20, screen.top()))
                 with patch.object(edge_hide.QCursor, 'pos', side_effect=lambda: cursor[0]), \
                         patch.object(widget, '_check_rehide', wraps=widget._check_rehide) as rehide_check:
-                    widget._hide_at_edge(edge)
-                    assert widget._hide_anim.state() == QPropertyAnimation.Running
+                    if edge == 'right':
+                        widget._loaded_geometry = f'{screen.right() + 1},{y},{widget.width()},{widget.height()}'
+                        widget.apply_loaded_settings()
+                        assert widget.geometry().right() == screen.right()
+                        QTest.qWait(650)
+                    else:
+                        widget._hide_at_edge(edge)
+                    if edge != 'right':
+                        assert widget._hide_anim.state() == QPropertyAnimation.Running
                     QTest.qWait(450)
                     assert widget.edge_hidden and widget.edge_restore_timer.isActive()
+                    if edge == 'right':
+                        with patch.object(window, 'save_settings') as save:
+                            save_window_settings(widget)
+                            saved = save.call_args.args[0]
+                        assert saved['window_edge'] == 'right'
+                        saved_x = int(saved['window_geometry'].split(',')[0])
+                        assert saved_x + widget.width() == screen.right() + 1
+                        assert saved['window_screen'] == app.primaryScreen().name()
                     cursor[0] = trigger
                     # 等待100ms探测定时器和300ms恢复动画真实执行。
                     QTest.qWait(600)

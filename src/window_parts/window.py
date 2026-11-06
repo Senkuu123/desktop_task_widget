@@ -1,6 +1,6 @@
 import sys
 from PyQt5.QtWidgets import QApplication, QWidget
-from PyQt5.QtCore import Qt, QTimer
+from PyQt5.QtCore import Qt, QTimer, QPoint
 from quick_notes.hotkey import NoteHotkey
 from quick_notes.actions import NoteActions
 from storage import save_settings, load_settings, load_habits_from_json, load_water_reminder
@@ -240,6 +240,8 @@ class TransparentTaskWindow(
             
             # 保存窗口几何信息用于后续应用
             self._loaded_geometry = settings.get('window_geometry', None)
+            self._loaded_edge = settings.get('window_edge')
+            self._loaded_screen = settings.get('window_screen')
             
         except Exception as e:
             print(f"⚠️ 加载窗口设置失败: {e}")
@@ -253,11 +255,28 @@ class TransparentTaskWindow(
                 parts = self._loaded_geometry.split(',')
                 if len(parts) == 4:
                     x, y, width, height = map(int, parts)
-                    # 确保窗口在屏幕范围内
-                    screen = QApplication.primaryScreen().availableGeometry()
-                    x = max(0, min(x, screen.width() - 100))
-                    y = max(0, min(y, screen.height() - 100))
-                    self.setGeometry(x, y, width, height)
+                    screens = QApplication.screens()
+                    screen = next((item for item in screens
+                                   if item.name() == getattr(self, '_loaded_screen', None)), None)
+                    screen = screen or QApplication.screenAt(QPoint(x, y)) or QApplication.primaryScreen()
+                    bounds = screen.geometry()
+                    available = screen.availableGeometry()
+                    edge = getattr(self, '_loaded_edge', None)
+                    # 兼容旧设置中保存的右侧隐藏坐标。
+                    if edge is None and x + width > bounds.right() + 1:
+                        edge = 'right'
+                    self.resize(width, height)
+                    width, height = self.width(), self.height()
+                    x = max(available.left(), min(x, available.right() + 1 - width))
+                    y = max(available.top(), min(y, available.bottom() + 1 - height))
+                    if edge == 'right':
+                        x = bounds.right() + 1 - width
+                    elif edge == 'left':
+                        x = bounds.left()
+                    elif edge == 'top':
+                        y = bounds.top()
+                    self.move(x, y)
+                    QTimer.singleShot(0, self._schedule_edge_hide)
                     print(f"✅ 应用窗口位置: ({x}, {y}), 大小: {width}x{height}")
             
             # 更新窗口样式
@@ -269,11 +288,19 @@ class TransparentTaskWindow(
     def save_window_settings(self):
         """保存窗口设置"""
         try:
+            position = self.pos()
+            edge = self._check_near_edge()
+            if (self.edge_hidden or self._restoring) and self._original_pos is not None:
+                position = self._original_pos
+                edge = self._current_edge
+            screen = QApplication.screenAt(position) or QApplication.primaryScreen()
             settings = {
+                'window_edge': edge,
+                'window_screen': screen.name(),
                 'window_background_opacity': self.window_background_opacity,
                 'current_font_size': self.current_font_size,
                 'current_font_opacity': self.current_font_opacity,
-                'window_geometry': f"{self.x()},{self.y()},{self.width()},{self.height()}",
+                'window_geometry': f"{position.x()},{position.y()},{self.width()},{self.height()}",
                 'folder_shortcuts': self.folder_shortcuts.paths(),
                 'folders_collapsed': self.folder_shortcuts.collapsed,
                 'task_area_height': self.task_folder_splitter.preferred_task_height,
