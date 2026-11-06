@@ -94,8 +94,8 @@ class FolderGrid(QListWidget):
         # QListView换行需要比整排列宽多1像素，将这1像素计入右侧余量。
         side = 96
         remainder = width - columns * side
-        left = remainder // 2
-        right = max(0, remainder - left - 1)
+        left = 0
+        right = max(0, remainder - 1)
         margins = self.viewportMargins()
         if margins.left() != left or margins.right() != right:
             self.setViewportMargins(left, 0, right, 0)

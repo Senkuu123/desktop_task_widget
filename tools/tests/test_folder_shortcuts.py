@@ -181,6 +181,8 @@ class FolderShortcutsTests(unittest.TestCase):
                 QTest.qWait(20)
                 self.assertEqual(panel.grid.gridSize(), grid_size)
                 self.assertEqual(panel.grid.iconSize(), icon_size)
+                first = panel.grid.visualItemRect(panel.grid.item(0)).translated(panel.grid.viewport().pos())
+                self.assertEqual(first.left(), 0)
             splitter = widget.task_folder_splitter
             splitter.moveSplitter(140, 1)
             QTest.qWait(20)
@@ -207,7 +209,7 @@ class FolderShortcutsTests(unittest.TestCase):
             QTest.qWait(20)
             self.assertEqual(widget.task_list_widget.height(), top)
 
-    def test_hidden_scrollbar_wheel_and_centered_row(self):
+    def test_hidden_scrollbar_wheel_and_left_aligned_row(self):
         with isolated_window() as widget:
             panel = widget.folder_shortcuts
             for i in range(12):
@@ -221,7 +223,8 @@ class FolderShortcutsTests(unittest.TestCase):
             self.assertGreater(bar.maximum(), 0)
             first = grid.visualItemRect(grid.item(0)).translated(grid.viewport().pos())
             third = grid.visualItemRect(grid.item(2)).translated(grid.viewport().pos())
-            self.assertLessEqual(abs(first.left() - (grid.width() - 1 - third.right())), 1)
+            self.assertEqual(first.left(), 0)
+            self.assertEqual(first.top(), third.top())
             position = grid.viewport().rect().center()
             for delta in (-120, 120):
                 previous = bar.value()
